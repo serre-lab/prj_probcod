@@ -99,6 +99,7 @@ class LitClassifier(pl.LightningModule):
         
 
 
+
 dataset = MNIST(os.getcwd(), download=True, transform=transforms.ToTensor())
 train, val = random_split(dataset, [55000, 5000])
 
