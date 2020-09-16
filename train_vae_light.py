@@ -2,18 +2,24 @@
 import os
 import numpy as np
 
+import argparse
+
+import matplotlib as mpl
+mpl.use('Agg')
+
 import torch
 from torch import nn
 from torch.nn import functional as F
 from torchvision import datasets, transforms
 from network import VAE, PHI, loss_function, enable_grad, disable_grad
 from torchvision.utils import make_grid, save_image
-import argparse
+import pytorch_lightning as pl
+from pytorch_lightning import Trainer
 
-import matplotlib as mpl
-mpl.use('Agg')
+
 
 from utils import show
+
 
 #matplotlib.rc('xtick', labelsize=15)
 #import matplotlib
@@ -44,70 +50,122 @@ parser.add_argument('--print-freq', type=int, default=1, help='logging epoch int
 parser.add_argument('--disp-freq', type=int, default=10, help='image display epoch interval')
 parser.add_argument('--ckpt-freq', type=int, default=0, help='checkpoint epoch interval')
 parser.add_argument('--eval-freq', type=int, default=20, help='evaluation epoch interval')
-parser.add_argument('--early-stop', type=int, default=3, help='early stopping iterations')
 
 parser.add_argument('--path', type=str, default='', help='path to store the trained network')
 
 
 args = parser.parse_args()
 
-def evaluate(args, test_loader, model):
+
+
+
+
+
+# this is just a plain nn.Module with some structure
+class LitClassifier(pl.LightningModule):
+
+    def __init__(self):
+        super().__init__()
+
+        self.vae = VAE(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim)
+
+    def forward(self, x):
+        return torch.relu(self.l1(x.view(x.size(0), -1)))
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = F.cross_entropy(y_hat, y)
+        result = pl.TrainResult(loss)
+        result.log('train_loss', loss, on_epoch=True)
+        return result
+        
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = F.cross_entropy(y_hat, y)
+        result = pl.EvalResult(checkpoint_on=loss)
+        result.log('val_loss', loss)
+        return result
+
+    def configure_optimizers(self):
+        def configure_optimizers(self):
+        lr = self.hparams.learning_rate
+
+        opt_enc = torch.optim.Adam(self.generator.parameters(), lr=lr)
+        opt_dec = torch.optim.Adam(self.discriminator.parameters(), lr=lr)
+        return [opt_g, opt_d], []
+        
+        
+
+
+dataset = MNIST(os.getcwd(), download=True, transform=transforms.ToTensor())
+train, val = random_split(dataset, [55000, 5000])
+
+model = LitClassifier()
+trainer = Trainer()
+trainer.fit(model, DataLoader(train), DataLoader(val))
+
+
+
+
+# def evaluate(args, test_loader, model):
     
-    val_reco_loss = []
-    val_KL_loss = []
-    # train_loss_gen = []
+#     val_reco_loss = []
+#     val_KL_loss = []
+#     # train_loss_gen = []
 
-    vae = model
-    # vae, phi = model
-    # param_svi= phi.parameters()
+#     vae = model
+#     # vae, phi = model
+#     # param_svi= phi.parameters()
     
-    # vae.eval()
+#     # vae.eval()
 
-    for batch_idx, (data, label) in enumerate(test_loader):
-        data = data.cuda()
-        data = (data>0.001).float() #torch.bernoulli(data)
+#     for batch_idx, (data, label) in enumerate(test_loader):
+#         data = data.cuda()
+#         data = (data>0.001).float() #torch.bernoulli(data)
         
-        batch_size = data.shape[0]
+#         batch_size = data.shape[0]
 
-        phi = PHI()
-        if args.cuda:
-            phi = phi.cuda()
-        param_svi = list(phi.parameters())                
-        optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=args.lr_svi)
+#         phi = PHI()
+#         if args.cuda:
+#             phi = phi.cuda()
+#         param_svi = list(phi.parameters())                
+#         optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=args.lr_svi)
         
-        ## Initialise the posterior output
-        with torch.no_grad():
-            phi.mu_p.data, phi.log_var_p.data = vae.encoder(data.view(batch_size, -1))
+#         ## Initialise the posterior output
+#         with torch.no_grad():
+#             phi.mu_p.data, phi.log_var_p.data = vae.encoder(data.view(batch_size, -1))
         
-        ## Iterative refinement of the posterior
-        enable_grad(param_svi)
-        for idx_it in range(args.nb_it-1):
-            optimizer_SVI.zero_grad()
-            z = vae.sampling(phi.mu_p, phi.log_var_p)
-            reco = vae.decoder(z)
-            loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='sum')
-            loss_gen.backward()
-            optimizer_SVI.step()
+#         ## Iterative refinement of the posterior
+#         enable_grad(param_svi)
+#         for idx_it in range(args.nb_it-1):
+#             optimizer_SVI.zero_grad()
+#             z = vae.sampling(phi.mu_p, phi.log_var_p)
+#             reco = vae.decoder(z)
+#             loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='sum')
+#             loss_gen.backward()
+#             optimizer_SVI.step()
 
-        optimizer_SVI.zero_grad()
-        z = vae.sampling(phi.mu_p, phi.log_var_p)
-        reco = vae.decoder(z)
-        loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none')
+#         optimizer_SVI.zero_grad()
+#         z = vae.sampling(phi.mu_p, phi.log_var_p)
+#         reco = vae.decoder(z)
+#         loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none')
         
-        disable_grad(param_svi)
+#         disable_grad(param_svi)
 
-        val_reco_loss += reco_loss.data.tolist()
-        val_KL_loss += KL_loss.data.tolist()
-        # train_loss_gen += loss_gen.data.tolist()
+#         val_reco_loss += reco_loss.data.tolist()
+#         val_KL_loss += KL_loss.data.tolist()
+#         # train_loss_gen += loss_gen.data.tolist()
 
-    results = { 
-        'val_rec_loss_data': val_reco_loss, 
-        'val_KL_loss_data': val_KL_loss,
-        'val_rec_loss': np.mean(val_reco_loss), 
-        'val_KL_loss': np.mean(val_KL_loss),
-    }
+#     results = { 
+#         'val_rec_loss_data': val_reco_loss, 
+#         'val_KL_loss_data': val_KL_loss,
+#         'val_rec_loss': np.mean(val_reco_loss), 
+#         'val_KL_loss': np.mean(val_KL_loss),
+#     }
 
-    return results
+#     return results
 
 def main(args):
 
@@ -299,9 +357,7 @@ def main(args):
                                 )
             else:
                 early_stopping_count += 1
-                if early_stopping_count > args.ealy_stop:
-                    print('stopped early')
-                    break
+                # if 
                 # early_stopping_count
 
 if __name__ == '__main__':

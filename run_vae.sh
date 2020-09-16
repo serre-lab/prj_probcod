@@ -7,7 +7,7 @@ lr=1e-3
 
 nb_it=20
 
-nb_epoch=200
+nb_epoch=100
 
 device=0
 
