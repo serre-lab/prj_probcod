@@ -116,9 +116,10 @@ def main():
                 output = classif_model(reco.view_as(data))
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct += pred.eq(label.view_as(pred)).sum().item()
+                ##
 
-                if args.verbose:
-                    print(100. * correct / len(test_loader.dataset))
+            if args.verbose:
+                print(100. * correct / len(test_loader.dataset))
                 #if batch_idx >=0:
                 #    break
 

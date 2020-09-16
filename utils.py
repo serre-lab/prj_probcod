@@ -9,7 +9,6 @@ from torch.nn import functional as F
 
 def show(img, title=None ):
     npimg = img.numpy()
-    print('heho')
     plt.imshow(np.transpose(npimg, (1, 2, 0)), interpolation='nearest')
     plt.axis('off')
     if title is not None:
