@@ -1,3 +1,7 @@
+
+import os
+import numpy as np
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -5,72 +9,138 @@ from torchvision import datasets, transforms
 from network import VAE, loss_function, enable_grad, disable_grad
 from torchvision.utils import make_grid
 import argparse
+
 from utils import show
 #matplotlib.rc('xtick', labelsize=15)
 #import matplotlib
 #matplotlib.rc('ytick', labelsize=15)
 
+
+
+def evaluate(args, test_loader, model):
+    
+    val_reco_loss = []
+    val_KL_loss = []
+    # train_loss_gen = []
+
+    vae, optimizer_SVI, mu_p, log_var_p = model
+    
+    vae.eval()
+
+    for batch_idx, (data, label) in enumerate(test_loader):
+        data = data.to(args.device)
+        data = (data>0.001).float() #torch.bernoulli(data)
+        
+        batch_size = data.shape[0]
+
+        ## Initialise the posterior output
+        mu_p.data, log_var_p.data = vae.encoder(data.view(batch_size, -1))
+
+        ## Iterative refinement of the posterior
+        enable_grad(param_svi)
+        for idx_it in range(args.nb_it):
+            optimizer_SVI.zero_grad()
+            z = vae.sampling(mu_p, log_var_p)
+            reco = vae.decoder(z)
+            _, reco_loss, KL_loss = loss_function(reco, data, mu_p, log_var_p, reduction='none')
+            loss_gen.backward()
+            optimizer_SVI.step()
+
+        disable_grad(param_svi)
+
+        val_reco_loss += reco_loss.data.tolist()
+        val_KL_loss += KL_loss.data.tolist()
+        # train_loss_gen += loss_gen.data.tolist()
+
+    results = { 
+        'val_rec_loss_data': val_reco_loss, 
+        'val_KL_div_data': val_KL_loss,
+        'val_rec_loss': np.mean(val_reco_loss), 
+        'val_KL_div': np.mean(val_KL_loss),
+    }
+
+    return results
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--lr_svi', type=float, default = 1e-2, help='learning rate of the iterative inference')
-    parser.add_argument('--nb_epoch', type=int, default=200, help='number of training epoch')
-    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate of the amortized inference')
-    parser.add_argument('--path', type=str, default='', help='path to store the trained network')
+    
+    # model
     parser.add_argument('--type', type=str, default='IVAE', help='could be IVAE or VAE')
-    parser.add_argument('--archi', type=int, nargs='+', default=[512,256,20], help='achitecture of the encoder')
     ## To do : Do not hardcode the 3 layer architecture in the VAE network
-    parser.add_argument('--device', type=str, default='cuda:7', help='gpu name')
+    parser.add_argument('--arch', type=int, nargs='+', default=[512,256,20], help='achitecture of the encoder')    
     parser.add_argument('--nb_it', type=int, default=20, help='number of iteration if the iterative inference')
+    parser.add_argument('--lr_svi', type=float, default = 1e-2, help='learning rate of the iterative inference')
+
+    # training
+    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate of the amortized inference')
+    parser.add_argument('--batch_size', type=int, default=1024, help='training batch size')
+    parser.add_argument('--nb_epoch', type=int, default=200, help='number of training epochs')
+
+    # other
+    parser.add_argument('--cuda', type=bool, default=True, help='use GPUs')
+    parser.add_argument('--seed', type=int, default=1, help='random seed')
+
+    parser.add_argument('--verbose', type=bool, default=True, help='show everything')
+    parser.add_argument('--print-freq', type=int, default=1, help='logging iteration interval')
+    parser.add_argument('--path', type=str, default='', help='path to store the trained network')
 
     args = parser.parse_args()
 
-    #device = 'cuda:7'
-    batch_size = 1024
-    kwargs = {'batch_size': batch_size,
-              'drop_last': True,
-              'pin_memory': True,
-              'num_workers': 8}
+    ## prepare output directory
+    os.makedirs(args.path)
 
-    grid_param = {'padding': 2, 'normalize': True,
-                  'pad_value': 1,
-                  'nrow': 8}
+    ## manual seed
+    torch.manual_seed(args.seed)
 
-    transform = transforms.Compose([
-        transforms.ToTensor()])
+    ## data 
+    transform = transforms.Compose([transforms.ToTensor()])
 
     dataset1 = datasets.MNIST('../../DataSet/MNIST/', train=True, download=False, transform=transform)
-    #dataset2 = datasets.MNIST('../../DataSet/MNIST/', train=False, download=False, transform=transform)
+    dataset2 = datasets.MNIST('../../DataSet/MNIST/', train=False, download=False, transform=transform)
 
-    train_loader = torch.utils.data.DataLoader(dataset1, **kwargs, shuffle=True)
-    #test_loader = torch.utils.data.DataLoader(dataset2, **kwargs, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(dataset1, 
+                                                batch_size=args.batch_size,
+                                                drop_last=True,
+                                                pin_memory=True,
+                                                num_workers=8, 
+                                                shuffle=True)
 
-    torch.manual_seed(1)
-    #nb_epoch = 200
-    #lr = 1e-3
-    #z_dim = 10
-    update_rate = 50
-    #h_dim1 = 256
-    #h_dim2 = 128
-    #nb_iteration = 50
-    lr_SVI = args.lr_svi
-    #lr_SVI = 1e-2
-    vae = VAE(x_dim = 28**2, h_dim1=args.archi[0], h_dim2=args.archi[1], z_dim=args.archi[-1]).to(args.device)
+    test_loader = torch.utils.data.DataLoader(dataset2, 
+                                                batch_size=args.batch_size,
+                                                drop_last=False,
+                                                pin_memory=True, 
+                                                num_workers=8, 
+                                                shuffle=False)
+    
+    ## model
+    vae = VAE(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.arch[-1])
+
     mu_p = nn.Parameter()
     log_var_p = nn.Parameter()
     param_svi = [mu_p, log_var_p]
+    
     # optimizer_SVI = torch.optim.SGD([{'params' : param_svi}], lr=lr_SVI, momentum=0.9)
     # optimizer_SVI = torch.optim.RMSprop([{'params' : param_svi}], lr=lr_SVI, momentum=0.9)
+    
+    if args.cuda:
+        vae = vae.cuda()
+        mu_p = mu_p.cuda()
+        log_var_p = log_var_p.cuda()
+    
     optimizer_SVI = torch.optim.Adam([{'params': param_svi}], lr=args.lr_svi)
-
-    for p in param_svi:
-        p.requires_grad = False
-
     optimizer = torch.optim.Adam([{'params': vae.parameters(), 'lr': args.lr}])
 
     all_param = vae.param_enc + vae.param_dec + param_svi
     disable_grad(all_param)
-
+    # update_rate = 50
     # scheduler = StepLR(optimizer, step_size=update_rate, gamma=0.5)
+    
+    # display params
+    grid_param = {'padding': 2, 'normalize': True,
+                'pad_value': 1,
+                'nrow': 8}
+
+    ## training
     for idx_epoch in range(args.nb_epoch):
         train_reco_loss = 0
         train_KL_loss = 0
@@ -79,8 +149,13 @@ def main():
         vae.train()
 
         for batch_idx, (data, label) in enumerate(train_loader):
-            data = data.to(args.device)
-            data = torch.bernoulli(data)
+            
+            if args.cuda:
+                data = data.cuda()
+            
+            data = (data>0.001).float() 
+            #data = torch.bernoulli(data)
+            
             ## Initialise the posterior output
             mu_p.data, log_var_p.data = vae.encoder(data.view(-1, 784))
 
@@ -121,34 +196,60 @@ def main():
             train_KL_loss += KL_loss
             train_loss_gen += loss_gen
 
-        if idx_epoch % 10 == 0:
-            print("original image")
-            img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
-            show(img_to_plot.detach().cpu())
-            print("recontructed image")
-            x_reco = reco.view(len(data), 1, 28, 28)
-            img_to_plot = make_grid(x_reco[0:8, :, :, :], **grid_param)
-            show(img_to_plot.detach().cpu())
-
         # scheduler.step()
-
-        if idx_epoch % update_rate == 0:
-            print('\n\nNEW LEARNING RATElr={0:.1e}\n\n'.format(optimizer.param_groups[0]['lr']))
-
-        print(' Train Epoch: {} -- Loss {:6.2f} (reco : {:6.2f} -- KL : {:6.2f}) '.format(
-            idx_epoch,
-            train_loss_gen / len(train_loader.dataset),
-            train_reco_loss / len(train_loader.dataset),
-            train_KL_loss / len(train_loader.dataset)
-        ))
+        
+        if args.verbose:
+            if idx_epoch % args.print_freq == 0:
+                print('\n\nNEW LEARNING RATElr={0:.1e}\n\n'.format(optimizer.param_groups[0]['lr']))
+        
+            print(' Train Epoch: {} -- Loss {:6.2f} (reco : {:6.2f} -- KL : {:6.2f}) '.format(
+                idx_epoch,
+                train_loss_gen / len(train_loader.dataset),
+                train_reco_loss / len(train_loader.dataset),
+                train_KL_loss / len(train_loader.dataset)
+            ))
+            
+            if idx_epoch % 10 == 0:
+                print("original image")
+                img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
+                show(img_to_plot.detach().cpu())
+                print("recontructed image")
+                x_reco = reco.view(len(data), 1, 28, 28)
+                img_to_plot = make_grid(x_reco[0:8, :, :, :], **grid_param)
+                show(img_to_plot.detach().cpu())
 
         if args.path != '':
-            to_save =  {'model' : vae.state_dict(),
-                        'type' : args.type}
+            save_dict =  {
+                'model' : vae.state_dict(),
+                'optim': optimizer_SVI.state_dict(),
+                'config': vars(args),
+            }
 
-            torch.save(to_save, args.path + '{}_lrsvi={}_lr={}_enc={}_it={}.pth'.format(args.type, args.lr_svi, args.lr,
-                                                                                        str(args.archi), args.nb_it))
+            torch.save(save_dict, 
+                        os.path.join(args.path, 'model_{}.pth'.format(idx_epoch))
+                        )
 
+    avg_train_rec_loss = train_reco_loss / len(train_loader.dataset)
+    avg_train_KL_loss = train_KL_loss / len(train_loader.dataset)
+    
+    results={
+        'train_rec_loss': avg_train_rec_loss, 
+        'train_KL_div': avg_train_KL_loss,
+    }
+    
+    val_results = evaluate(args, test_loader, model)
+    
+    results.update(val_results)
+    save_dict =  {
+        'model' : vae.state_dict(),
+        'optim': optimizer_SVI.state_dict(),
+        'config': vars(args),
+        'results': results,
+    }
+
+    torch.save(save_dict, 
+                os.path.join(args.path, 'model_results.pth')
+                )
 
 if __name__ == '__main__':
     main()

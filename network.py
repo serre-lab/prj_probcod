@@ -64,12 +64,22 @@ class VAE(nn.Module):
 
 #    return x_r.view_as(x), (mu_p, log_var_p), (mu_l, log_var_l)
 
-def loss_function(recon_x, x, mu_p, log_var_p):
-    reco =  F.binary_cross_entropy(recon_x, x.view(-1, 784), reduction='sum')
+def loss_function(recon_x, x, mu_p, log_var_p, reduction='mean'):
+    ''' VAE loss function '''
+
+    reco = F.binary_cross_entropy(recon_x, x.view(-1, 784), reduction='none').sum(-1)
     #reco = F.mse_loss(recon_x, x.view_as(recon_x), reduction='sum')
-    KLD =  - 0.5 * torch.sum(1 + log_var_p - mu_p.pow(2) - log_var_p.exp())
-    to_return = reco + KLD
-    return to_return, reco, KLD
+    KLD =  - 0.5 * torch.sum(1 + log_var_p - mu_p.pow(2) - log_var_p.exp(), -1)
+    
+    if reduction == 'mean':
+        reco = reco.mean()
+        KLD = KLD.mean()
+    elif reduction == 'sum':
+        reco = reco.sum()
+        KLD = KLD.sum()
+    
+    total_loss = reco + KLD
+    return total_loss, reco, KLD
 
 
 def enable_grad(param_group):
