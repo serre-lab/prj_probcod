@@ -226,7 +226,7 @@ def main(args):
             #     print('\n\nNEW LEARNING RATElr={0:.1e}\n\n'.format(optimizer.param_groups[0]['lr']))
         
             if idx_epoch % args.print_freq == 0:
-                print(' Train Epoch: {} -- Loss {:6.5f} (reco : {:6.5f} -- KL : {:6.5f}) '.format(
+                print(' Train Epoch: {} -- Loss {:6.2f} (reco : {:6.2f} -- KL : {:6.2f}) '.format(
                     idx_epoch,
                     train_loss_gen / len(train_loader.dataset),
                     train_reco_loss / len(train_loader.dataset),
