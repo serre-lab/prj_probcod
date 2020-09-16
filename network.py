@@ -2,6 +2,31 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 
+class Classifier(nn.Module):
+    def __init__(self):
+        super(Classifier, self).__init__()
+        self.conv1 = nn.Conv2d(1, 32, 3, 1)
+        self.conv2 = nn.Conv2d(32, 64, 3, 1)
+        self.dropout1 = nn.Dropout2d(0.25)
+        self.dropout2 = nn.Dropout2d(0.5)
+        self.fc1 = nn.Linear(9216, 128)
+        self.fc2 = nn.Linear(128, 10)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = F.relu(x)
+        x = self.conv2(x)
+        x = F.relu(x)
+        x = F.max_pool2d(x, 2)
+        x = self.dropout1(x)
+        x = torch.flatten(x, 1)
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.dropout2(x)
+        x = self.fc2(x)
+        output = F.log_softmax(x, dim=1)
+        return output
+        
 class VAE(nn.Module):
     def __init__(self, x_dim, z_dim, h_dim1=512, h_dim2=256):
         super(VAE, self).__init__()
@@ -54,6 +79,14 @@ class VAE(nn.Module):
         # return mu, log_var
         return torch.sigmoid(self.fb6(h))
 
+class PHI(nn.Module):
+    def __init__(self):
+        super(PHI, self).__init__()
+        self.log_var_p = nn.Parameter() 
+        self.mu_p = nn.Parameter()
+    
+
+        
 #def forward(self, x):
 #    mu_p, log_var_p = self.encoder(x.view(-1, 784))
 #    z = self.sampling(mu_p, log_var_p)
@@ -64,12 +97,26 @@ class VAE(nn.Module):
 
 #    return x_r.view_as(x), (mu_p, log_var_p), (mu_l, log_var_l)
 
-def loss_function(recon_x, x, mu_p, log_var_p):
-    reco =  F.binary_cross_entropy(recon_x, x.view(-1, 784), reduction='sum')
+def loss_function(recon_x, x, mu_p, log_var_p, reduction='mean'):
+    ''' VAE loss function '''
+
+    reco = F.binary_cross_entropy(recon_x, x.view(-1, 784), reduction='none').sum(-1)
     #reco = F.mse_loss(recon_x, x.view_as(recon_x), reduction='sum')
-    KLD =  - 0.5 * torch.sum(1 + log_var_p - mu_p.pow(2) - log_var_p.exp())
-    to_return = reco + KLD
-    return to_return, reco, KLD
+    KLD =  - 0.5 * torch.sum(1 + log_var_p - mu_p.pow(2) - log_var_p.exp(), -1)
+    
+    # print(reco.shape)
+    # print(KLD.shape)
+
+    if reduction == 'mean':
+        reco = reco.mean()
+        KLD = KLD.mean()
+    elif reduction == 'sum':
+        reco = reco.sum()
+        KLD = KLD.sum()
+    
+    
+    total_loss = reco + KLD
+    return total_loss, reco, KLD
 
 
 def enable_grad(param_group):
