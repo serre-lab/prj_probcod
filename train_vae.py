@@ -7,14 +7,44 @@ from torch import nn
 from torch.nn import functional as F
 from torchvision import datasets, transforms
 from network import VAE, PHI, loss_function, enable_grad, disable_grad
-from torchvision.utils import make_grid
+from torchvision.utils import make_grid, save_image
 import argparse
 
+import matplotlib as mpl
+mpl.use('Agg')
+
 from utils import show
+
 #matplotlib.rc('xtick', labelsize=15)
 #import matplotlib
 #matplotlib.rc('ytick', labelsize=15)
 
+
+parser = argparse.ArgumentParser()
+    
+# model
+parser.add_argument('--type', type=str, default='IVAE', help='could be IVAE or VAE')
+## To do : Do not hardcode the 3 layer architecture in the VAE network
+parser.add_argument('--arch', type=int, nargs='+', default=[512,256,20], help='achitecture of the encoder')    
+parser.add_argument('--nb_it', type=int, default=20, help='number of iteration if the iterative inference')
+parser.add_argument('--lr_svi', type=float, default = 1e-2, help='learning rate of the iterative inference')
+
+# training
+parser.add_argument('--lr', type=float, default=1e-3, help='learning rate of the amortized inference')
+parser.add_argument('--batch_size', type=int, default=1024, help='training batch size')
+parser.add_argument('--nb_epoch', type=int, default=200, help='number of training epochs')
+
+# other
+parser.add_argument('--cuda', type=bool, default=True, help='use GPUs')
+parser.add_argument('--seed', type=int, default=1, help='random seed')
+
+parser.add_argument('--verbose', type=bool, default=True, help='show everything')
+parser.add_argument('--print-freq', type=int, default=1, help='logging iteration interval')
+parser.add_argument('--disp-freq', type=int, default=10, help='image display iteration interval')
+parser.add_argument('--ckpt-freq', type=int, default=20, help='checkpoint iteration interval')
+parser.add_argument('--path', type=str, default='', help='path to store the trained network')
+
+args = parser.parse_args()
 
 
 def evaluate(args, test_loader, model):
@@ -75,34 +105,7 @@ def evaluate(args, test_loader, model):
 
     return results
 
-def main():
-    parser = argparse.ArgumentParser()
-    
-    # model
-    parser.add_argument('--type', type=str, default='IVAE', help='could be IVAE or VAE')
-    ## To do : Do not hardcode the 3 layer architecture in the VAE network
-    parser.add_argument('--arch', type=int, nargs='+', default=[512,256,20], help='achitecture of the encoder')    
-    parser.add_argument('--nb_it', type=int, default=20, help='number of iteration if the iterative inference')
-    parser.add_argument('--lr_svi', type=float, default = 1e-2, help='learning rate of the iterative inference')
-
-    # training
-    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate of the amortized inference')
-    parser.add_argument('--batch_size', type=int, default=1024, help='training batch size')
-    parser.add_argument('--nb_epoch', type=int, default=200, help='number of training epochs')
-
-    # other
-    parser.add_argument('--cuda', type=bool, default=True, help='use GPUs')
-    parser.add_argument('--seed', type=int, default=1, help='random seed')
-
-    parser.add_argument('--verbose', type=bool, default=True, help='show everything')
-    parser.add_argument('--print-freq', type=int, default=1, help='logging iteration interval')
-    parser.add_argument('--path', type=str, default='', help='path to store the trained network')
-
-    args = parser.parse_args()
-
-    print(vars(args))
-    ## prepare output directory
-    os.makedirs(args.path)
+def main(args):
 
     ## manual seed
     torch.manual_seed(args.seed)
@@ -219,26 +222,31 @@ def main():
         # scheduler.step()
         
         if args.verbose:
-            if idx_epoch % args.print_freq == 0:
-                print('\n\nNEW LEARNING RATElr={0:.1e}\n\n'.format(optimizer.param_groups[0]['lr']))
+            # if idx_epoch % args.print_freq == 0:
+            #     print('\n\nNEW LEARNING RATElr={0:.1e}\n\n'.format(optimizer.param_groups[0]['lr']))
         
-            print(' Train Epoch: {} -- Loss {:6.2f} (reco : {:6.2f} -- KL : {:6.2f}) '.format(
-                idx_epoch,
-                train_loss_gen / len(train_loader.dataset),
-                train_reco_loss / len(train_loader.dataset),
-                train_KL_loss / len(train_loader.dataset)
-            ))
+            if idx_epoch % args.print_freq == 0:
+                print(' Train Epoch: {} -- Loss {:6.2f} (reco : {:6.2f} -- KL : {:6.2f}) '.format(
+                    idx_epoch,
+                    train_loss_gen / len(train_loader.dataset),
+                    train_reco_loss / len(train_loader.dataset),
+                    train_KL_loss / len(train_loader.dataset)
+                ))
             
-            # if idx_epoch % 10 == 0:
-            #     print("original image")
-            #     img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
-            #     show(img_to_plot.detach().cpu())
-            #     print("recontructed image")
-            #     x_reco = reco.view(len(data), 1, 28, 28)
-            #     img_to_plot = make_grid(x_reco[0:8, :, :, :], **grid_param)
-            #     show(img_to_plot.detach().cpu())
+            if idx_epoch % args.disp_freq == 0:
+                # print("original image")
+                # img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
+                # show(img_to_plot.detach().cpu())
+                # print("recontructed image")
+                # x_reco = reco.view(len(data), 1, 28, 28)
+                # img_to_plot = make_grid(x_reco[0:8, :, :, :], **grid_param)
+                # show(img_to_plot.detach().cpu())
 
-        if args.path != '':
+                x_reco = reco.view(len(data), 1, 28, 28)
+                img_to_plot = make_grid(torch.cat([data[0:8, :, :, :], x_reco[0:8, :, :, :]], 0), **grid_param)
+                save_image(img_to_plot, fp=os.path.join(args.path, 'recs_epoch{}.png'.format(idx_epoch)))
+
+        if args.path != '' and idx_epoch % args.ckpt_freq==0:
             save_dict =  {
                 'model' : vae.state_dict(),
                 'optim': optimizer_SVI.state_dict(),
@@ -272,7 +280,12 @@ def main():
                 )
 
 if __name__ == '__main__':
-    main()
+    
+    print(vars(args))
+    ## prepare output directory
+    os.makedirs(args.path)
+
+    main(args)
 
 
 
