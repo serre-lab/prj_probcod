@@ -25,9 +25,9 @@ parser = argparse.ArgumentParser()
 # model
 parser.add_argument('--type', type=str, default='IVAE', help='could be IVAE or VAE')
 ## To do : Do not hardcode the 3 layer architecture in the VAE network
-parser.add_argument('--arch', type=int, nargs='+', default=[512,256], help='achitecture of the encoder')    
-parser.add_argument('--z_dim', type=int, nargs='+', default=5, help='achitecture of the encoder')    
-parser.add_argument('--nb_it', type=int, default=20, help='number of iteration if the iterative inference')
+parser.add_argument('--arch', type=int, nargs='+', default=[512,256], help='architecture of the encoder')
+parser.add_argument('--z_dim', type=int, default=5, help='architecture of the encoder')
+parser.add_argument('--nb_it', type=int, default=20, help='number of iteration of the iterative inference')
 parser.add_argument('--lr_svi', type=float, default = 1e-2, help='learning rate of the iterative inference')
 
 # training

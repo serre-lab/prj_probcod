@@ -7,12 +7,14 @@ from torch import nn
 from torch.nn import functional as F
 
 
-def show(img, title=None ):
+def show(img, title=None, saving_path=None ):
     npimg = img.numpy()
     plt.imshow(np.transpose(npimg, (1, 2, 0)), interpolation='nearest')
     plt.axis('off')
     if title is not None:
         plt.title(title)
+    if saving_path is not None:
+        plt.savefig(saving_path)
     plt.show()
 
 class GaussianSmoothing(nn.Module):
@@ -32,8 +34,12 @@ class GaussianSmoothing(nn.Module):
 
 
         super(GaussianSmoothing, self).__init__()
-        if kernel_size != 4:
-            self.kernel_size = (5-1, 4-1, 5-1, 4-1)
+        if kernel_size % 2 == 0:
+            int_size = (kernel_size // 2)
+            self.pad_tuple = (int_size, int_size-1, int_size, int_size-1)
+        else :
+            int_size = (kernel_size // 2)
+            self.pad_tuple = (int_size, int_size, int_size, int_size)
 
         if isinstance(kernel_size, numbers.Number):
             kernel_size = [kernel_size] * dim
@@ -77,7 +83,7 @@ class GaussianSmoothing(nn.Module):
             )
 
     def forward(self, input, useless_param):
-        input = F.pad(input, self.kernel_size, mode='reflect')
+        input = F.pad(input, self.pad_tuple, mode='reflect')
         """
         Apply gaussian filter to input.
         Arguments:

@@ -1,7 +1,6 @@
 import argparse
 import torch
-from network import VAE, enable_grad, disable_grad, loss_function
-from train_classifier import Net
+from network import VAE, enable_grad, disable_grad, loss_function, Classifier
 from torchvision import datasets, transforms
 from torchvision.utils import make_grid
 from utils import show, GaussianSmoothing
@@ -14,8 +13,9 @@ def white_noise(input, std):
 def gaussian_noise(input, std):
     return input
 
-def salt_noise(input, std):
-    print('salt noise')
+def salt_pepper_noise(input, proba_ones):
+    mask = torch.bernoulli(torch.ones_like(input)*proba_ones).bool()
+    input[mask] = torch.bernoulli(torch.ones_like(input[mask])*0.5)
     return input
 
 def main():
@@ -35,14 +35,14 @@ def main():
 
     noise_function = {'white': white_noise,
                       'gaussian': gaussian_noise,
-                      'saltpepper': salt_noise}
+                      'saltpepper': salt_pepper_noise}
 
     ## setting the grid param
     grid_param = {'padding': 2, 'normalize': True,
                   'pad_value': 1,
                   'nrow': 8}
 
-    device = 'cuda:7'  ## to do : change for the aimen trick 'Cuda_visible_device'
+
     ## loading the VAE model
     vae_param = torch.load(args.PathVAE)['model'] ## to do : automatically load the kwargs from the experimentation file
     kwargs = {'x_dim': 28**2, 'z_dim': 10, 'h_dim1': 512, 'h_dim2': 256}
@@ -57,12 +57,12 @@ def main():
 
     ## loading the classification model
     classif_param = torch.load(args.PathClassifier)
-    classif_model = Net()
+    classif_model = Classifier()
     classif_model.load_state_dict(classif_param)
 
     if torch.cuda.is_available():
-        vae_model.to(device)
-        classif_model.to(device)
+        vae_model.cuda()
+        classif_model.cuda()
     ## load the testing database
     kwargs = {'batch_size': args.batch_size,
               'num_workers': 1,
@@ -84,21 +84,29 @@ def main():
     for noise_type in dico_config.keys():
         for param_noise in dico_config[noise_type]:
             if args.verbose:
-                print('Evaluating on {} noise with parameter {}'.format(noise_type,param_noise))
+                print('Evaluating on {} noise with parameter {}'.format(noise_type, param_noise))
             correct = 0
 
             if noise_type == 'gaussian':
-                smoothing = GaussianSmoothing(1, 8, 1).to(device)
+                smoothing = GaussianSmoothing(1, 28, param_noise).cuda()
                 noise_function['gaussian'] = smoothing.forward
 
             for batch_idx, (data, label) in enumerate(test_loader):
-                data, label = data.to(device), label.to(device)
+                data, label = data.cuda(), label.cuda()
                 if args.verbose:
-                    img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
-                    show(img_to_plot.detach().cpu(), title='original image')
+                    if batch_idx == 0:
+                        img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
+                        show(img_to_plot.detach().cpu(), title='original image',
+                             saving_path='../simulation/Image/image_original_{}_{}.png'.format(noise_type,param_noise))
 
                 data = noise_function[noise_type](data,param_noise)
-                print(data.size())
+
+                if args.verbose:
+                    if batch_idx == 0:
+                        img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
+                        show(img_to_plot.detach().cpu(), title='Blurred image',
+                             saving_path='../simulation/Image/image_blurred_{}_{}.png'.format(noise_type,param_noise))
+
                 mu_p.data, log_var_p.data = vae_model.encoder(data.view(-1, 784))
 
                 ## Iterative refinement of the posterior
@@ -111,12 +119,21 @@ def main():
                     loss_gen, reco_loss, KL_loss = loss_function(reco, data, mu_p, log_var_p)
                     loss_gen.backward()
                     optimizer_SVI.step()
+
+                if args.verbose:
+                    reco_to_plot = reco.view_as(data)
+                    img_to_plot = make_grid(reco_to_plot[0:8, :, :, :], **grid_param)
+                    show(img_to_plot.detach().cpu(), title='Reconstructed image',
+                         saving_path='../simulation/Image/image_reconstructed_{}_{}.png'.format(noise_type, param_noise))
                 disable_grad(param_svi)
 
                 output = classif_model(reco.view_as(data))
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct += pred.eq(label.view_as(pred)).sum().item()
                 ##
+
+                if batch_idx >= 0:
+                    break
 
             if args.verbose:
                 print(100. * correct / len(test_loader.dataset))
