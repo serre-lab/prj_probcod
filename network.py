@@ -54,6 +54,14 @@ class VAE(nn.Module):
         # return mu, log_var
         return torch.sigmoid(self.fb6(h))
 
+class PHI(nn.Module):
+    def __init__(self):
+        super(PHI, self).__init__()
+        self.log_var_p = nn.Parameter() 
+        self.mu_p = nn.Parameter()
+    
+
+        
 #def forward(self, x):
 #    mu_p, log_var_p = self.encoder(x.view(-1, 784))
 #    z = self.sampling(mu_p, log_var_p)
@@ -71,12 +79,16 @@ def loss_function(recon_x, x, mu_p, log_var_p, reduction='mean'):
     #reco = F.mse_loss(recon_x, x.view_as(recon_x), reduction='sum')
     KLD =  - 0.5 * torch.sum(1 + log_var_p - mu_p.pow(2) - log_var_p.exp(), -1)
     
+    # print(reco.shape)
+    # print(KLD.shape)
+
     if reduction == 'mean':
         reco = reco.mean()
         KLD = KLD.mean()
     elif reduction == 'sum':
         reco = reco.sum()
         KLD = KLD.sum()
+    
     
     total_loss = reco + KLD
     return total_loss, reco, KLD

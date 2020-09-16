@@ -7,18 +7,21 @@ lr=1e-3
 
 nb_it=20
 
-nb_epoch=1
+nb_epoch=200
 
 device=0
 
-verbose=False
+verbose=false
 
-NOW=$(date +"%m-%d-%Y_%H-%M-%S")
+# NOW=$(date +"%m-%d-%Y_%H-%M-%S")
+NOW='test'
 
 exp_name="${NOW}_${type}_lrsvi=${lr_svi}_lr=${lr}_nb_it=${nb_it}"
 
+
 path="../prj_probcod_exps/$exp_name"
 
+rm -r $path 
 
 CUDA_VISIBLE_DEVICES=$device python3 train_vae.py \
     --type $type \
@@ -26,5 +29,5 @@ CUDA_VISIBLE_DEVICES=$device python3 train_vae.py \
     --nb_it $nb_it \
     --nb_epoch $nb_epoch \
     --lr $lr \
-    --verbose $verbose \
     --path $path \
+    # --verbose $verbose \

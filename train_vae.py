@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torchvision import datasets, transforms
-from network import VAE, loss_function, enable_grad, disable_grad
+from network import VAE, PHI, loss_function, enable_grad, disable_grad
 from torchvision.utils import make_grid
 import argparse
 
@@ -23,29 +23,43 @@ def evaluate(args, test_loader, model):
     val_KL_loss = []
     # train_loss_gen = []
 
-    vae, optimizer_SVI, mu_p, log_var_p = model
+    vae = model
+    # vae, phi = model
+    # param_svi= phi.parameters()
     
-    vae.eval()
+    # vae.eval()
 
     for batch_idx, (data, label) in enumerate(test_loader):
-        data = data.to(args.device)
+        data = data.cuda()
         data = (data>0.001).float() #torch.bernoulli(data)
         
         batch_size = data.shape[0]
 
+        phi = PHI()
+        if args.cuda:
+            phi = phi.cuda()
+        param_svi = list(phi.parameters())                
+        optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=args.lr_svi)
+        
         ## Initialise the posterior output
-        mu_p.data, log_var_p.data = vae.encoder(data.view(batch_size, -1))
-
+        with torch.no_grad():
+            phi.mu_p.data, phi.log_var_p.data = vae.encoder(data.view(batch_size, -1))
+        
         ## Iterative refinement of the posterior
         enable_grad(param_svi)
-        for idx_it in range(args.nb_it):
+        for idx_it in range(args.nb_it-1):
             optimizer_SVI.zero_grad()
-            z = vae.sampling(mu_p, log_var_p)
+            z = vae.sampling(phi.mu_p, phi.log_var_p)
             reco = vae.decoder(z)
-            _, reco_loss, KL_loss = loss_function(reco, data, mu_p, log_var_p, reduction='none')
+            loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='sum')
             loss_gen.backward()
             optimizer_SVI.step()
 
+        optimizer_SVI.zero_grad()
+        z = vae.sampling(phi.mu_p, phi.log_var_p)
+        reco = vae.decoder(z)
+        loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none')
+        
         disable_grad(param_svi)
 
         val_reco_loss += reco_loss.data.tolist()
@@ -86,6 +100,7 @@ def main():
 
     args = parser.parse_args()
 
+    print(vars(args))
     ## prepare output directory
     os.makedirs(args.path)
 
@@ -114,23 +129,20 @@ def main():
     
     ## model
     vae = VAE(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.arch[-1])
+    # phi = PHI()
 
-    mu_p = nn.Parameter()
-    log_var_p = nn.Parameter()
-    param_svi = [mu_p, log_var_p]
-    
     # optimizer_SVI = torch.optim.SGD([{'params' : param_svi}], lr=lr_SVI, momentum=0.9)
     # optimizer_SVI = torch.optim.RMSprop([{'params' : param_svi}], lr=lr_SVI, momentum=0.9)
     
     if args.cuda:
         vae = vae.cuda()
-    #    mu_p = mu_p.cuda()
-    #    log_var_p = log_var_p.cuda()
-    
-    optimizer_SVI = torch.optim.Adam([{'params': param_svi}], lr=args.lr_svi)
-    optimizer = torch.optim.Adam([{'params': vae.parameters(), 'lr': args.lr}])
+        # phi = phi.cuda()
 
-    all_param = vae.param_enc + vae.param_dec + param_svi
+    # param_svi = list(phi.parameters())
+    
+    optimizer = torch.optim.Adam(vae.parameters(), lr= args.lr)
+
+    all_param = vae.param_enc + vae.param_dec # + param_svi
     disable_grad(all_param)
     # update_rate = 50
     # scheduler = StepLR(optimizer, step_size=update_rate, gamma=0.5)
@@ -153,19 +165,27 @@ def main():
             if args.cuda:
                 data = data.cuda()
             
+            batch_size = data.shape[0]
+
             data = (data>0.001).float() 
             #data = torch.bernoulli(data)
             
             ## Initialise the posterior output
-            mu_p.data, log_var_p.data = vae.encoder(data.view(-1, 784))
+            phi = PHI()
+            if args.cuda:
+                phi = phi.cuda()
+            param_svi = list(phi.parameters())                
+            optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=args.lr_svi)
+            
+            phi.mu_p.data, phi.log_var_p.data = vae.encoder(data.view(batch_size, -1))
 
             ## Iterative refinement of the posterior
             enable_grad(param_svi)
             for idx_it in range(args.nb_it):
                 optimizer_SVI.zero_grad()
-                z = vae.sampling(mu_p, log_var_p)
+                z = vae.sampling(phi.mu_p, phi.log_var_p)
                 reco = vae.decoder(z)
-                loss_gen, reco_loss, KL_loss = loss_function(reco, data, mu_p, log_var_p)
+                loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='sum')
                 loss_gen.backward()
                 optimizer_SVI.step()
             disable_grad(param_svi)
@@ -173,9 +193,9 @@ def main():
             ## Amortized learning of the likelihood parameter
             enable_grad(vae.param_dec)
             optimizer.zero_grad()
-            z = vae.sampling(mu_p, log_var_p)
+            z = vae.sampling(phi.mu_p, phi.log_var_p)
             reco = vae.decoder(z)
-            loss_gen, reco_loss, KL_loss = loss_function(reco, data, mu_p, log_var_p)
+            loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p)
             loss_gen.backward()
             optimizer.step()
             disable_grad(vae.param_dec)
@@ -209,14 +229,14 @@ def main():
                 train_KL_loss / len(train_loader.dataset)
             ))
             
-            if idx_epoch % 10 == 0:
-                print("original image")
-                img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
-                show(img_to_plot.detach().cpu())
-                print("recontructed image")
-                x_reco = reco.view(len(data), 1, 28, 28)
-                img_to_plot = make_grid(x_reco[0:8, :, :, :], **grid_param)
-                show(img_to_plot.detach().cpu())
+            # if idx_epoch % 10 == 0:
+            #     print("original image")
+            #     img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
+            #     show(img_to_plot.detach().cpu())
+            #     print("recontructed image")
+            #     x_reco = reco.view(len(data), 1, 28, 28)
+            #     img_to_plot = make_grid(x_reco[0:8, :, :, :], **grid_param)
+            #     show(img_to_plot.detach().cpu())
 
         if args.path != '':
             save_dict =  {
@@ -237,7 +257,7 @@ def main():
         'train_KL_div': avg_train_KL_loss,
     }
     
-    val_results = evaluate(args, test_loader, model)
+    val_results = evaluate(args, test_loader, vae)
     
     results.update(val_results)
     save_dict =  {
