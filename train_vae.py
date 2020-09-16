@@ -41,8 +41,8 @@ parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--verbose', type=bool, default=True, help='show everything')
 parser.add_argument('--print-freq', type=int, default=1, help='logging epoch interval')
 parser.add_argument('--disp-freq', type=int, default=10, help='image display epoch interval')
-parser.add_argument('--ckpt-freq', type=int, default=20, help='checkpoint epoch interval')
-parser.add_argument('--eval-freq', type=int, default=2, help='evaluation epoch interval')
+parser.add_argument('--ckpt-freq', type=int, default=0, help='checkpoint epoch interval')
+parser.add_argument('--eval-freq', type=int, default=20, help='evaluation epoch interval')
 
 parser.add_argument('--path', type=str, default='', help='path to store the trained network')
 
