@@ -11,6 +11,8 @@ nb_epoch=1
 
 device=0
 
+verbose=False
+
 NOW=$(date +"%m-%d-%Y_%H-%M-%S")
 
 exp_name="${NOW}_${type}_lrsvi=${lr_svi}_lr=${lr}_nb_it=${nb_it}"
@@ -24,4 +26,5 @@ CUDA_VISIBLE_DEVICES=$device python3 train_vae.py \
     --nb_it $nb_it \
     --nb_epoch $nb_epoch \
     --lr $lr \
+    --verbose $verbose \
     --path $path \

@@ -95,8 +95,8 @@ def main():
     ## data 
     transform = transforms.Compose([transforms.ToTensor()])
 
-    dataset1 = datasets.MNIST('../../DataSet/MNIST/', train=True, download=False, transform=transform)
-    dataset2 = datasets.MNIST('../../DataSet/MNIST/', train=False, download=False, transform=transform)
+    dataset1 = datasets.MNIST('../DataSet/MNIST/', train=True, download=True, transform=transform)
+    dataset2 = datasets.MNIST('../DataSet/MNIST/', train=False, download=True, transform=transform)
 
     train_loader = torch.utils.data.DataLoader(dataset1, 
                                                 batch_size=args.batch_size,
@@ -124,8 +124,8 @@ def main():
     
     if args.cuda:
         vae = vae.cuda()
-        mu_p = mu_p.cuda()
-        log_var_p = log_var_p.cuda()
+    #    mu_p = mu_p.cuda()
+    #    log_var_p = log_var_p.cuda()
     
     optimizer_SVI = torch.optim.Adam([{'params': param_svi}], lr=args.lr_svi)
     optimizer = torch.optim.Adam([{'params': vae.parameters(), 'lr': args.lr}])
