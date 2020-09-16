@@ -25,7 +25,7 @@ parser = argparse.ArgumentParser()
 # model
 parser.add_argument('--type', type=str, default='IVAE', help='could be IVAE or VAE')
 ## To do : Do not hardcode the 3 layer architecture in the VAE network
-parser.add_argument('--arch', type=int, nargs='+', default=[512,256,20], help='achitecture of the encoder')    
+parser.add_argument('--arch', type=int, nargs='+', default=[512,256,5], help='achitecture of the encoder')    
 parser.add_argument('--nb_it', type=int, default=20, help='number of iteration if the iterative inference')
 parser.add_argument('--lr_svi', type=float, default = 1e-2, help='learning rate of the iterative inference')
 
@@ -39,9 +39,11 @@ parser.add_argument('--cuda', type=bool, default=True, help='use GPUs')
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 
 parser.add_argument('--verbose', type=bool, default=True, help='show everything')
-parser.add_argument('--print-freq', type=int, default=1, help='logging iteration interval')
-parser.add_argument('--disp-freq', type=int, default=10, help='image display iteration interval')
-parser.add_argument('--ckpt-freq', type=int, default=20, help='checkpoint iteration interval')
+parser.add_argument('--print-freq', type=int, default=1, help='logging epoch interval')
+parser.add_argument('--disp-freq', type=int, default=10, help='image display epoch interval')
+parser.add_argument('--ckpt-freq', type=int, default=20, help='checkpoint epoch interval')
+parser.add_argument('--eval-freq', type=int, default=2, help='evaluation epoch interval')
+
 parser.add_argument('--path', type=str, default='', help='path to store the trained network')
 
 args = parser.parse_args()
@@ -98,9 +100,9 @@ def evaluate(args, test_loader, model):
 
     results = { 
         'val_rec_loss_data': val_reco_loss, 
-        'val_KL_div_data': val_KL_loss,
+        'val_KL_loss_data': val_KL_loss,
         'val_rec_loss': np.mean(val_reco_loss), 
-        'val_KL_div': np.mean(val_KL_loss),
+        'val_KL_loss': np.mean(val_KL_loss),
     }
 
     return results
@@ -154,6 +156,8 @@ def main(args):
     grid_param = {'padding': 2, 'normalize': True,
                 'pad_value': 1,
                 'nrow': 8}
+    
+    best_val_loss=200000
 
     ## training
     for idx_epoch in range(args.nb_epoch):
@@ -246,7 +250,7 @@ def main(args):
                 img_to_plot = make_grid(torch.cat([data[0:8, :, :, :], x_reco[0:8, :, :, :]], 0), **grid_param)
                 save_image(img_to_plot, fp=os.path.join(args.path, 'recs_epoch{}.png'.format(idx_epoch)))
 
-        if args.path != '' and idx_epoch % args.ckpt_freq==0:
+        if args.path != '' and args.ckpt_freq!=0 and idx_epoch % args.ckpt_freq==0:
             save_dict =  {
                 'model' : vae.state_dict(),
                 'optim': optimizer_SVI.state_dict(),
@@ -257,27 +261,39 @@ def main(args):
                         os.path.join(args.path, 'model_{}.pth'.format(idx_epoch))
                         )
 
-    avg_train_rec_loss = train_reco_loss / len(train_loader.dataset)
-    avg_train_KL_loss = train_KL_loss / len(train_loader.dataset)
-    
-    results={
-        'train_rec_loss': avg_train_rec_loss, 
-        'train_KL_div': avg_train_KL_loss,
-    }
-    
-    val_results = evaluate(args, test_loader, vae)
-    
-    results.update(val_results)
-    save_dict =  {
-        'model' : vae.state_dict(),
-        'optim': optimizer_SVI.state_dict(),
-        'config': vars(args),
-        'results': results,
-    }
+        if idx_epoch % args.eval_freq == 0:
+            val_results = evaluate(args, test_loader, vae)
+            
+            print(' Eval Epoch: {} -- Loss {:6.2f} (reco : {:6.2f} -- KL : {:6.2f}) '.format(
+                    idx_epoch,
+                    val_results['val_rec_loss'] + val_results['val_KL_loss'],
+                    val_results['val_rec_loss'],
+                    val_results['val_KL_loss'],
+                ))
 
-    torch.save(save_dict, 
-                os.path.join(args.path, 'model_results.pth')
-                )
+            if best_val_loss > val_results['val_KL_loss'] + val_results['val_rec_loss']:
+                best_val_loss = val_results['val_KL_loss'] + val_results['val_rec_loss']
+
+                avg_train_rec_loss = train_reco_loss / len(train_loader.dataset)
+                avg_train_KL_loss = train_KL_loss / len(train_loader.dataset)
+                
+                results={
+                    'train_rec_loss': avg_train_rec_loss, 
+                    'train_KL_div': avg_train_KL_loss,
+                }
+                
+                results.update(val_results)
+                
+                save_dict =  {
+                    'model' : vae.state_dict(),
+                    'optim': optimizer_SVI.state_dict(),
+                    'config': vars(args),
+                    'results': results,
+                }
+                if args.path != '':
+                    torch.save(save_dict, 
+                                os.path.join(args.path, 'model_results.pth')
+                                )
 
 if __name__ == '__main__':
     
