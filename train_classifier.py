@@ -86,8 +86,8 @@ def main():
                      )
 
     transform=transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,))
+        transforms.ToTensor()
+        #transforms.Normalize((0.1307,), (0.3081,))
         ])
     dataset1 = datasets.MNIST('../../DataSet/MNIST/', train=True, download=False,
                        transform=transform)
