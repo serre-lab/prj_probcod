@@ -188,34 +188,10 @@ def main(args):
             ## Initialise the posterior output
             phi = vae(data, nb_it=args.nb_it)
 
-            '''
-            phi = PHI()
-            if args.cuda:
-                phi = phi.cuda()
-            param_svi = list(phi.parameters())                
-            optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=args.lr_svi)
-            
-            phi.mu_p.data, phi.log_var_p.data = vae.encoder(data.view(batch_size, -1))
-
-            ## Iterative refinement of the posterior
-            enable_grad(param_svi)
-            for idx_it in range(args.nb_it):
-                optimizer_SVI.zero_grad()
-                z = vae.sampling(phi.mu_p, phi.log_var_p)
-                reco = vae.decoder(z)
-                loss_gen, _, _ = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='sum')
-                loss_gen.backward()
-                optimizer_SVI.step()
-            disable_grad(param_svi)
-            '''
-
             ## Amortized learning of the likelihood parameter
             enable_grad(vae.param_dec)
             optimizer.zero_grad()
-            z = vae.sampling(phi.mu_p, phi.log_var_p)
-            reco = vae.decoder(z)
-            loss_gen, _, _ = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='sum')
-            loss_gen.backward()
+            vae.step(data, phi)
             optimizer.step()
             disable_grad(vae.param_dec)
 
@@ -223,13 +199,9 @@ def main(args):
             enable_grad(vae.param_enc)
             optimizer.zero_grad()
             mu, log_var = vae.encoder(data.view(-1, 784))
-            z = vae.sampling(mu, log_var)
-            reco = vae.decoder(z)
-            loss_gen, reco_loss, KL_loss = loss_function(reco, data, mu, log_var, reduction='sum')
-            loss_gen.backward()
+            reco, _, loss_gen, reco_loss, KL_loss = vae.step(data, mu=mu, log_var=log_var)
             optimizer.step()
             disable_grad(vae.param_enc)
-
 
             train_reco_loss += reco_loss
             train_KL_loss += KL_loss
