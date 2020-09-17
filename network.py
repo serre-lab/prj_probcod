@@ -28,10 +28,11 @@ class Classifier(nn.Module):
         return output
         
 class VAE(nn.Module):
-    def __init__(self, x_dim, z_dim, h_dim1=512, h_dim2=256):
+    def __init__(self, x_dim, z_dim, h_dim1=512, h_dim2=256, activation='tanh'):
         super(VAE, self).__init__()
 
         # encoder part
+
         self.ff1 = nn.Linear(x_dim, h_dim1)
         self.ff2 = nn.Linear(h_dim1, h_dim2)
         self.ff3_mu = nn.Linear(h_dim2, z_dim)
@@ -40,6 +41,15 @@ class VAE(nn.Module):
         self.fb4 = nn.Linear(z_dim, h_dim2)
         self.fb5 = nn.Linear(h_dim2, h_dim1)
         self.fb6 = nn.Linear(h_dim1, x_dim)
+
+        if activation == 'tanh':
+            self.activ_func = torch.nn.Tanh()
+        elif activation == 'relu':
+            self.activ_func = torch.nn.ReLU()
+
+        self.enc = nn.Sequential(self.ff1, self.activ_func, self.ff2, self.activ_func)
+        self.dec = nn.Sequential(self.fb4, self.activ_func, self.fb5, self.activ_func)
+
         # self.fb6_mu = nn.Linear(h_dim1, x_dim)
         # self.fb6_var = nn.Linear(h_dim1, x_dim)
 
@@ -52,12 +62,10 @@ class VAE(nn.Module):
         self.z_dim = z_dim
 
     def encoder(self, x):
-        # h = torch.tanh(self.ff1(x))
-        # h = torch.tanh(self.ff2(h))
-        h = torch.tanh(self.ff1(x))
-        h = torch.tanh(self.ff2(h))
-        # h = F.relu(self.ff1(x))
-        # h = F.relu(self.ff2(h))
+
+        #h = torch.tanh(self.ff1(x))
+        #h = torch.tanh(self.ff2(h))
+        h = self.enc(x)
         mu = self.ff3_mu(h)
         log_var = self.ff3_var(h)
         return mu, log_var
@@ -68,20 +76,32 @@ class VAE(nn.Module):
         return eps.mul(std).add(mu)
 
     def decoder(self, z):
-        # h = torch.tanh(self.fb4(z))
-        # h = torch.tanh(self.fb5(h))
-        h = torch.tanh(self.fb4(z))
-        h = torch.tanh(self.fb5(h))
-        # h = F.relu(self.fb4(z))
-        # h = F.relu(self.fb5(h))
-        # mu = self.fb6_mu(h)
+
+        #h = torch.tanh(self.fb4(z))
+        #h = torch.tanh(self.fb5(h))
+        h  = self.dec(z)
         # log_var = self.fb6_var(h)
         # return mu, log_var
         return torch.sigmoid(self.fb6(h))
 
+    def step(self, data):
+        mu, log_var = self.encoder(torch.flatten(data, start_dim=1))
+        z = self.sampling(mu, log_var)
+        reco = self.decoder(z)
+        loss_gen, reco_loss, KL_loss = loss_function(reco, data, mu, log_var, reduction='sum')
+        loss_gen.backward()
+
+        return reco, z, loss_gen, reco_loss, KL_loss
+
+    def forward_eval(self, data, reduction='sum'):
+        mu, log_var = self.encoder(torch.flatten(data, start_dim=1))
+        z = self.sampling(mu, log_var)
+        reco = self.decoder(z)
+        loss_gen, reco_loss, KL_loss = loss_function(reco, data, mu, log_var, reduction=reduction)
+        return reco, z, mu, log_var, loss_gen, reco_loss, KL_loss
 
 class iVAE(nn.Module):
-    def __init__(self, lr_svi, x_dim, z_dim, h_dim1=512, h_dim2=256, cuda=True ):
+    def __init__(self, lr_svi, x_dim, z_dim, h_dim1=512, h_dim2=256, cuda=True, activation='tanh' ):
         super(iVAE, self).__init__()
         self.to_cuda = cuda
         self.lr_svi=lr_svi
@@ -94,6 +114,15 @@ class iVAE(nn.Module):
         self.fb4 = nn.Linear(z_dim, h_dim2)
         self.fb5 = nn.Linear(h_dim2, h_dim1)
         self.fb6 = nn.Linear(h_dim1, x_dim)
+
+        if activation == 'tanh':
+            self.activ_func = torch.nn.Tanh()
+        elif activation == 'relu':
+            self.activ_func = torch.nn.ReLU()
+
+        self.enc = nn.Sequential(self.ff1, self.activ_func, self.ff2, self.activ_func)
+        self.dec = nn.Sequential(self.fb4, self.activ_func, self.fb5, self.activ_func)
+
         # self.fb6_mu = nn.Linear(h_dim1, x_dim)
         # self.fb6_var = nn.Linear(h_dim1, x_dim)
 
@@ -106,8 +135,9 @@ class iVAE(nn.Module):
         self.z_dim = z_dim
 
     def encoder(self, x):
-        h = torch.tanh(self.ff1(x))
-        h = torch.tanh(self.ff2(h))
+        #h = torch.tanh(self.ff1(x))
+        #h = torch.tanh(self.ff2(h))
+        h = self.enc(x)
         mu = self.ff3_mu(h)
         log_var = self.ff3_var(h)
         return mu, log_var
@@ -118,8 +148,9 @@ class iVAE(nn.Module):
         return eps.mul(std).add(mu)
 
     def decoder(self, z):
-        h = torch.tanh(self.fb4(z))
-        h = torch.tanh(self.fb5(h))
+        #h = torch.tanh(self.fb4(z))
+        #h = torch.tanh(self.fb5(h))
+        h = self.dec(z)
         return torch.sigmoid(self.fb6(h))
 
     def forward(self, x, nb_it):
@@ -141,7 +172,7 @@ class iVAE(nn.Module):
 
         return phi
 
-    def forward_eval(self, x, nb_it, extra=False):
+    def forward_eval(self, x, nb_it, freq_extra=0):
         phi = PHI()
         if self.to_cuda:
             phi = phi.cuda()
@@ -149,7 +180,7 @@ class iVAE(nn.Module):
         optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=self.lr_svi)
 
         phi.mu_p.data, phi.log_var_p.data = self.encoder(torch.flatten(x, start_dim=1))
-        if extra:
+        if freq_extra != 0:
             reco_l, mu_l, log_var_l, z_l, loss_gen_l, reco_loss_l, KL_loss_l = [],[],[],[],[],[],[]
 
         ## Iterative refinement of the posterior
@@ -159,40 +190,41 @@ class iVAE(nn.Module):
             reco, z, loss_gen, reco_loss, KL_loss = self.step(x, phi)
             optimizer_SVI.step()
             
-            if extra:
-                reco_l.append(reco)
-                z_l.append(z)
+            if (freq_extra!=0) and ((idx_it+1)%freq_extra) == 0:
+
+                reco_l.append(reco.data)
+                z_l.append(z.data)
                 mu_l.append(phi.mu_p.data)
                 log_var_l.append(phi.log_var_p.data)
-                loss_gen_l.append(loss_gen)
-                reco_loss_l.append(reco_loss)
-                KL_loss_l.append(KL_loss)
+                loss_gen_l.append(loss_gen.data)
+                reco_loss_l.append(reco_loss.data)
+                KL_loss_l.append(KL_loss.data)
 
         disable_grad(param_svi)
 
-        if extra:
+        if freq_extra != 0:
             reco_l = torch.stack(reco_l, 1)
             z_l = torch.stack(z_l, 1)
             mu_l = torch.stack(mu_l, 1)
             log_var_l = torch.stack(log_var_l, 1)
-            loss_gen_l = torch.stack(loss_gen_l, 1)
-            reco_loss_l = torch.stack(reco_loss_l, 1)
-            KL_loss_l = torch.stack(KL_loss_l, 1)
+            loss_gen_l = torch.stack(loss_gen_l, 0)
+            reco_loss_l = torch.stack(reco_loss_l, 0)
+            KL_loss_l = torch.stack(KL_loss_l, 0)
             return reco_l, z_l, mu_l, log_var_l, loss_gen_l, reco_loss_l, KL_loss_l
         
         else:
-            return reco, z, phi.mu_l_p.data, phi.log_var_p.data, loss_gen, reco_loss, KL_loss
+            return reco, z, phi.mu_p.data, phi.log_var_p.data, loss_gen, reco_loss, KL_loss
 
-    def step(self, x, phi=None, mu=None, log_var=None):
+    def step(self, x, phi=None, mu=None, log_var=None, reduction='sum'):
         
         if phi is not None:
             z = self.sampling(phi.mu_p, phi.log_var_p)
             reco = self.decoder(z)
-            loss_gen, reco_loss, KL_loss = loss_function(reco, x, phi.mu_p, phi.log_var_p, reduction='sum')
+            loss_gen, reco_loss, KL_loss = loss_function(reco, x, phi.mu_p, phi.log_var_p, reduction=reduction)
         else:
             z = self.sampling(mu, log_var)
             reco = self.decoder(z)
-            loss_gen, reco_loss, KL_loss = loss_function(reco, x, mu, log_var, reduction='sum')    
+            loss_gen, reco_loss, KL_loss = loss_function(reco, x, mu, log_var, reduction=reduction)
         loss_gen.backward()
 
         return reco, z, loss_gen, reco_loss, KL_loss

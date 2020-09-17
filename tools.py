@@ -1,5 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import math
 import numbers
 import torch
@@ -7,15 +7,16 @@ from torch import nn
 from torch.nn import functional as F
 
 
-def show(img, title=None, saving_path=None ):
-    npimg = img.numpy()
-    plt.imshow(np.transpose(npimg, (1, 2, 0)), interpolation='nearest')
-    plt.axis('off')
-    if title is not None:
-        plt.title(title)
-    if saving_path is not None:
-        plt.savefig(saving_path)
-    plt.show()
+#def show(img, title=None, saving_path=None ):
+#    npimg = img.numpy()
+#    plt.imshow(np.transpose(npimg, (1, 2, 0)), interpolation='nearest')
+#    plt.axis('off')
+#    if title is not None:
+#        plt.title(title)
+#    if saving_path is not None:
+#        plt.savefig(saving_path)
+#    plt.show()
+
 
 class GaussianSmoothing(nn.Module):
     """
@@ -92,4 +93,5 @@ class GaussianSmoothing(nn.Module):
             filtered (torch.Tensor): Filtered output.
         """
         return self.conv(input, weight=self.weight, groups=self.groups)
+
 

@@ -10,14 +10,8 @@ from network import VAE, iVAE, PHI, loss_function, enable_grad, disable_grad
 from torchvision.utils import make_grid, save_image
 import argparse
 
-import matplotlib as mpl
-mpl.use('Agg')
-
-from utils import show
-
-#matplotlib.rc('xtick', labelsize=15)
-#import matplotlib
-#matplotlib.rc('ytick', labelsize=15)
+#import matplotlib as mpl
+#mpl.use('Agg')
 
 
 parser = argparse.ArgumentParser()
@@ -45,8 +39,10 @@ parser.add_argument('--disp-freq', type=int, default=10, help='image display epo
 parser.add_argument('--ckpt-freq', type=int, default=0, help='checkpoint epoch interval')
 parser.add_argument('--eval-freq', type=int, default=20, help='evaluation epoch interval')
 parser.add_argument('--early-stop', type=int, default=3, help='early stopping iterations')
+parser.add_argument('--activation_function', type=str, default='tanh', help='path to store the trained network')
 
 parser.add_argument('--path', type=str, default='', help='path to store the trained network')
+
 
 
 args = parser.parse_args()
@@ -68,41 +64,18 @@ def evaluate(args, test_loader, model):
         data = (data>0.001).float() #torch.bernoulli(data)
         
         #batch_size = data.shape[0]
-        phi = model(data, nb_it=args.nb_it)
-        """
-        phi = PHI()
-        if args.cuda:
-            phi = phi.cuda()
-        param_svi = list(phi.parameters())                
-        optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=args.lr_svi)
-        
-        ## Initialise the posterior output
-        with torch.no_grad():
-            phi.mu_p.data, phi.log_var_p.data = vae.encoder(data.view(batch_size, -1))
-        
-        ## Iterative refinement of the posterior
-        enable_grad(param_svi)
-        for idx_it in range(args.nb_it-1):
-            optimizer_SVI.zero_grad()
-            z = vae.sampling(phi.mu_p, phi.log_var_p)
-            reco = vae.decoder(z)
-            loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='sum')
-            loss_gen.backward()
-            optimizer_SVI.step()
+        if args.type == 'IVAE':
+            phi = model(data, nb_it=args.nb_it)
+            z = model.sampling(phi.mu_p, phi.log_var_p)
+            reco = model.decoder(z)
+            loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none')
 
-        optimizer_SVI.zero_grad()
-        
-        z = vae.sampling(phi.mu_p, phi.log_var_p)
-        reco = vae.decoder(z)
-        loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none')
-        
-        disable_grad(param_svi)
-        """
-        z = model.sampling(phi.mu_p, phi.log_var_p)
-        reco = model.decoder(z)
-        loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none')
+        elif args.type == 'VAE':
+            _,_,_,_, loss_gen, reco_loss, KL_loss = model.forward_eval(data, reduction='none')
+
         val_reco_loss += reco_loss.data.tolist()
         val_KL_loss += KL_loss.data.tolist()
+
         # train_loss_gen += loss_gen.data.tolist()
 
     results = { 
@@ -140,9 +113,13 @@ def main(args):
                                                 shuffle=False)
     
     ## model
-    vae_model = iVAE(x_dim = 28**2, lr_svi=args.lr_svi, \
+    if args.type == 'IVAE':
+        vae_model = iVAE(x_dim = 28**2, lr_svi=args.lr_svi, \
                h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim,\
-               cuda=args.cuda)
+               activation= args.activation_function, cuda=args.cuda)
+    elif args.type == 'VAE':
+        vae_model = VAE(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim, \
+                        activation=args.activation_function)
     #vae = VAE(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim)
     # phi = PHI()
 
@@ -182,28 +159,38 @@ def main(args):
             if args.cuda:
                 data = data.cuda()
             
-            batch_size = data.shape[0]
+            #batch_size = data.shape[0]
 
             data = (data>0.001).float() 
             #data = torch.bernoulli(data)
             
             ## Initialise the posterior output
-            phi = vae_model(data, nb_it=args.nb_it)
+            if args.type == 'IVAE':
+                phi = vae_model(data, nb_it=args.nb_it)
 
-            ## Amortized learning of the likelihood parameter
-            enable_grad(vae_model.param_dec)
-            optimizer.zero_grad()
-            vae_model.step(data, phi)
-            optimizer.step()
-            disable_grad(vae_model.param_dec)
+                ## Amortized learning of the likelihood parameter
+                enable_grad(vae_model.param_dec)
+                optimizer.zero_grad()
+                vae_model.step(data, phi)
+                optimizer.step()
+                disable_grad(vae_model.param_dec)
 
-            ## Amortized learning of the posterior parameter
-            enable_grad(vae_model.param_enc)
-            optimizer.zero_grad()
-            mu, log_var = vae_model.encoder(data.view(-1, 784))
-            reco, _, loss_gen, reco_loss, KL_loss = vae_model.step(data, mu=mu, log_var=log_var)
-            optimizer.step()
-            disable_grad(vae_model.param_enc)
+                ## Amortized learning of the posterior parameter
+                enable_grad(vae_model.param_enc)
+                optimizer.zero_grad()
+                mu, log_var = vae_model.encoder(torch.flatten(data, start_dim=1))
+                reco, _, loss_gen, reco_loss, KL_loss = vae_model.step(data, mu=mu, log_var=log_var)
+                optimizer.step()
+                disable_grad(vae_model.param_enc)
+
+            elif args.type == 'VAE':
+                enable_grad(all_param)
+                optimizer.zero_grad()
+                reco, z, mu, log_var, loss_gen, reco_loss, KL_loss = vae_model.forward_eval(data)
+                loss_gen.backward()
+                optimizer.step()
+                disable_grad(all_param)
+
 
             train_reco_loss += reco_loss
             train_KL_loss += KL_loss
@@ -215,7 +202,7 @@ def main(args):
             # if idx_epoch % args.print_freq == 0:
             #     print('\n\nNEW LEARNING RATElr={0:.1e}\n\n'.format(optimizer.param_groups[0]['lr']))
         
-            if idx_epoch % args.print_freq == 0:
+            if (idx_epoch+1) % args.print_freq == 0:
                 print(' Train Epoch: {} -- Loss {:6.2f} (reco : {:6.2f} -- KL : {:6.2f}) '.format(
                     idx_epoch,
                     train_loss_gen / len(train_loader.dataset),
@@ -223,7 +210,7 @@ def main(args):
                     train_KL_loss / len(train_loader.dataset)
                 ))
             
-            if idx_epoch % args.disp_freq == 0:
+            if (idx_epoch+1) % args.disp_freq == 0:
                 # print("original image")
                 # img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
                 # show(img_to_plot.detach().cpu())
@@ -247,7 +234,7 @@ def main(args):
                         os.path.join(args.path, 'model_{}.pth'.format(idx_epoch))
                         )
 
-        if idx_epoch % args.eval_freq == 0 and args.eval_freq!=0:
+        if (idx_epoch+1) % args.eval_freq == 0 and args.eval_freq!=0:
             val_results = evaluate(args, test_loader, vae_model)
             
             print(' Eval Epoch: {} -- Loss {:6.2f} (reco : {:6.2f} -- KL : {:6.2f}) '.format(
