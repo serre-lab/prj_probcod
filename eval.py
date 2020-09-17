@@ -1,12 +1,18 @@
-import argparse
+import os
+
+import json
+
+import numpy as np
+import pandas as pd
+
 import torch
-from network import VAE, iVAE, enable_grad, disable_grad, loss_function, Classifier
 from torchvision import datasets, transforms
 from torchvision.utils import make_grid, save_image
+
+from network import VAE, iVAE, enable_grad, disable_grad, loss_function, Classifier
 from utils import show, GaussianSmoothing
-import json
-import os
-import pandas as pd
+
+import argparse
 
 
 parser = argparse.ArgumentParser(description='Evaluation pipeline on MNIST')
@@ -106,7 +112,7 @@ def main(args):
                               transform=transform)
     test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
 
-    #df_results = pd.DataFrame(columns)
+    df_results = pd.DataFrame(columns=['transform', 'param', 'accuracy', 'out_file'])
     ## evaluation loop
     #for noise in args.NoiseType:
     for noise_type in dico_config.keys():
@@ -126,18 +132,33 @@ def main(args):
                 reco, z, mu_l_p, log_var_p, loss_gen, reco_loss, KL_loss = vae_model.forward_eval(data_blurred, nb_it=args_vae['nb_it'])
                 output = classif_model(reco.view_as(data))
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+                
                 correct += pred.eq(label.view_as(pred)).sum().item()
+            
+            acc = correct/len(dataset)
+            
+            # put data here
+            results = {}
+            filename = os.path.join(args.path, 'result_{}_{}.npy'.format(noise_type, param_noise))
+            np.save(filename, results)
 
-            if args.disp:
+            df_results.append({
+                'transform': noise_type,
+                'param': param_noise,
+                'accuracy': acc,
+                'out_file': filename,
+            })
+            
+            # if args.disp:
 
-                z = vae_model.sampling(phi.mu, phi.log_var)
-                reco = vae_model.decoder(z)
-                x_reco = reco.view_as(data)
-                img_to_plot = make_grid(torch.cat([data[0:8, :, :, :], data_blurred[0:8, :, :, :], x_reco], 0), **grid_param)
-                save_image(img_to_plot, fp=os.path.join(args.path, 'image_{}_{}.png'.format(noise_type, param_noise)))
+            #     z = vae_model.sampling(phi.mu, phi.log_var)
+            #     reco = vae_model.decoder(z)
+            #     x_reco = reco.view_as(data)
+            #     img_to_plot = make_grid(torch.cat([data[0:8, :, :, :], data_blurred[0:8, :, :, :], x_reco], 0), **grid_param)
+            #     save_image(img_to_plot, fp=os.path.join(args.path, 'image_{}_{}.png'.format(noise_type, param_noise)))
 
 
-                print(100. * correct/len(test_loader.dataset))
+            #     print(100. * correct/len(test_loader.dataset))
 
                 ##
 
@@ -149,6 +170,8 @@ def main(args):
                 #if batch_idx >=0:
                 #    break
 
+    df_results.to_csv(os.path.join(args.path,'results.csv')) 
+    # when reading use index_col=0
 
 if __name__ == '__main__':
     print(vars(args))
