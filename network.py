@@ -150,7 +150,7 @@ class iVAE(nn.Module):
 
         phi.mu_p.data, phi.log_var_p.data = self.encoder(torch.flatten(x, start_dim=1))
         if extra:
-            reco_l, z_l, loss_gen_l, reco_loss_l, KL_loss_l = [],[],[],[],[]
+            reco_l, mu_l, log_var_l, z_l, loss_gen_l, reco_loss_l, KL_loss_l = [],[],[],[],[],[],[]
 
         ## Iterative refinement of the posterior
         enable_grad(param_svi)
@@ -162,6 +162,8 @@ class iVAE(nn.Module):
             if extra:
                 reco_l.append(reco)
                 z_l.append(z)
+                mu_l.append(phi.mu_p.data)
+                log_var_l.append(phi.log_var_p.data)
                 loss_gen_l.append(loss_gen)
                 reco_loss_l.append(reco_loss)
                 KL_loss_l.append(KL_loss)
@@ -171,13 +173,15 @@ class iVAE(nn.Module):
         if extra:
             reco_l = torch.stack(reco_l, 1)
             z_l = torch.stack(z_l, 1)
+            mu_l = torch.stack(mu_l, 1)
+            log_var_l = torch.stack(log_var_l, 1)
             loss_gen_l = torch.stack(loss_gen_l, 1)
             reco_loss_l = torch.stack(reco_loss_l, 1)
             KL_loss_l = torch.stack(KL_loss_l, 1)
-            return reco_l, z_l, loss_gen_l, reco_loss_l, KL_loss_l
+            return reco_l, z_l, mu_l, log_var_l, loss_gen_l, reco_loss_l, KL_loss_l
         
         else:
-            return reco, z, loss_gen, reco_loss, KL_loss
+            return reco, z, phi.mu_l_p.data, phi.log_var_p.data, loss_gen, reco_loss, KL_loss
 
     def step(self, x, phi=None, mu=None, log_var=None):
         
