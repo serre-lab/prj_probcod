@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torchvision import datasets, transforms
-from network import VAE, PHI, loss_function, enable_grad, disable_grad
+from network import VAE, iVAE, PHI, loss_function, enable_grad, disable_grad
 from torchvision.utils import make_grid, save_image
 import argparse
 
@@ -28,7 +28,7 @@ parser.add_argument('--type', type=str, default='IVAE', help='could be IVAE or V
 parser.add_argument('--arch', type=int, nargs='+', default=[512,256], help='architecture of the encoder')
 parser.add_argument('--z_dim', type=int, default=5, help='architecture of the encoder')
 parser.add_argument('--nb_it', type=int, default=20, help='number of iteration of the iterative inference')
-parser.add_argument('--lr_svi', type=float, default = 1e-2, help='learning rate of the iterative inference')
+parser.add_argument('--lr_svi', type=float, default = 1e-4, help='learning rate of the iterative inference')
 
 # training
 parser.add_argument('--lr', type=float, default=1e-3, help='learning rate of the amortized inference')
@@ -67,8 +67,9 @@ def evaluate(args, test_loader, model):
         data = data.cuda()
         data = (data>0.001).float() #torch.bernoulli(data)
         
-        batch_size = data.shape[0]
-
+        #batch_size = data.shape[0]
+        phi = vae(data, nb_it=args.nb_it)
+        """
         phi = PHI()
         if args.cuda:
             phi = phi.cuda()
@@ -90,12 +91,16 @@ def evaluate(args, test_loader, model):
             optimizer_SVI.step()
 
         optimizer_SVI.zero_grad()
+        
         z = vae.sampling(phi.mu_p, phi.log_var_p)
         reco = vae.decoder(z)
         loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none')
         
         disable_grad(param_svi)
-
+        """
+        z = vae.sampling(phi.mu_p, phi.log_var_p)
+        reco = vae.decoder(z)
+        loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none')
         val_reco_loss += reco_loss.data.tolist()
         val_KL_loss += KL_loss.data.tolist()
         # train_loss_gen += loss_gen.data.tolist()
@@ -135,7 +140,8 @@ def main(args):
                                                 shuffle=False)
     
     ## model
-    vae = VAE(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim)
+    vae = iVAE(x_dim = 28**2, args=args, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim)
+    #vae = VAE(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim)
     # phi = PHI()
 
     # optimizer_SVI = torch.optim.SGD([{'params' : param_svi}], lr=lr_SVI, momentum=0.9)
@@ -180,6 +186,9 @@ def main(args):
             #data = torch.bernoulli(data)
             
             ## Initialise the posterior output
+            phi = vae(data, nb_it=args.nb_it)
+
+            '''
             phi = PHI()
             if args.cuda:
                 phi = phi.cuda()
@@ -198,6 +207,7 @@ def main(args):
                 loss_gen.backward()
                 optimizer_SVI.step()
             disable_grad(param_svi)
+            '''
 
             ## Amortized learning of the likelihood parameter
             enable_grad(vae.param_dec)
@@ -255,7 +265,7 @@ def main(args):
         if args.path != '' and args.ckpt_freq!=0 and idx_epoch % args.ckpt_freq==0:
             save_dict =  {
                 'model' : vae.state_dict(),
-                'optim': optimizer_SVI.state_dict(),
+                #'optim': optimizer_SVI.state_dict(),
                 'config': vars(args),
             }
 
@@ -289,7 +299,7 @@ def main(args):
                 
                 save_dict =  {
                     'model' : vae.state_dict(),
-                    'optim': optimizer_SVI.state_dict(),
+                    #'optim': optimizer_SVI.state_dict(),
                     'config': vars(args),
                     'results': results,
                 }

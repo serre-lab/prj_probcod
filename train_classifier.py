@@ -22,7 +22,7 @@ parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
                     help='learning rate (default: 1.0)')
 parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
                     help='Learning rate step gamma (default: 0.7)')
-parser.add_argument('--no-cuda', action='store_true', default=False,
+parser.add_argument('--cuda', default=True,
                     help='disables CUDA training')
 parser.add_argument('--verbose', type=bool, default=True, help='show everything')
 parser.add_argument('--print-freq', type=int, default=1, help='logging epoch interval')

@@ -79,6 +79,73 @@ class VAE(nn.Module):
         # return mu, log_var
         return torch.sigmoid(self.fb6(h))
 
+
+class iVAE(nn.Module):
+    def __init__(self, x_dim, args, z_dim, h_dim1=512, h_dim2=256 ):
+        super(iVAE, self).__init__()
+        self.args = args
+        #self.lr_svi=lr_svi
+        # encoder part
+        self.ff1 = nn.Linear(x_dim, h_dim1)
+        self.ff2 = nn.Linear(h_dim1, h_dim2)
+        self.ff3_mu = nn.Linear(h_dim2, z_dim)
+        self.ff3_var = nn.Linear(h_dim2, z_dim)
+        # decoder part
+        self.fb4 = nn.Linear(z_dim, h_dim2)
+        self.fb5 = nn.Linear(h_dim2, h_dim1)
+        self.fb6 = nn.Linear(h_dim1, x_dim)
+        # self.fb6_mu = nn.Linear(h_dim1, x_dim)
+        # self.fb6_var = nn.Linear(h_dim1, x_dim)
+
+        self.param_enc = [self.ff1.weight, self.ff1.bias, self.ff2.weight, self.ff2.bias,
+                          self.ff3_mu.weight, self.ff3_mu.bias, self.ff3_var.weight, self.ff3_var.bias]
+
+        self.param_dec = [self.fb4.weight, self.fb4.bias, self.fb5.weight, self.fb5.bias,
+                          self.fb6.weight, self.fb6.bias]
+
+        self.z_dim = z_dim
+
+    def encoder(self, x):
+        h = torch.tanh(self.ff1(x))
+        h = torch.tanh(self.ff2(h))
+        mu = self.ff3_mu(h)
+        log_var = self.ff3_var(h)
+        return mu, log_var
+
+    def sampling(self, mu, log_var):
+        std = torch.exp(0.5 * log_var)
+        eps = torch.randn_like(std)
+        return eps.mul(std).add(mu)
+
+    def decoder(self, z):
+        h = torch.tanh(self.fb4(z))
+        h = torch.tanh(self.fb5(h))
+        return torch.sigmoid(self.fb6(h))
+
+    def forward(self, x, nb_it):
+        phi = PHI()
+        if self.args.cuda:
+            phi = phi.cuda()
+        param_svi = list(phi.parameters())
+        optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=self.args.lr_svi)
+
+        phi.mu_p.data, phi.log_var_p.data = self.encoder(torch.flatten(x, start_dim=1))
+
+        ## Iterative refinement of the posterior
+        enable_grad(param_svi)
+        for idx_it in range(nb_it):
+            optimizer_SVI.zero_grad()
+            z = self.sampling(phi.mu_p, phi.log_var_p)
+            reco = self.decoder(z)
+            loss_gen, _, _ = loss_function(reco, x, phi.mu_p, phi.log_var_p, reduction='sum')
+            loss_gen.backward()
+            optimizer_SVI.step()
+        disable_grad(param_svi)
+
+        return phi
+
+
+
 class PHI(nn.Module):
     def __init__(self):
         super(PHI, self).__init__()

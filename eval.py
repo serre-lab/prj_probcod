@@ -1,10 +1,25 @@
 import argparse
 import torch
-from network import VAE, enable_grad, disable_grad, loss_function, Classifier
+from network import VAE, iVAE, enable_grad, disable_grad, loss_function, Classifier
 from torchvision import datasets, transforms
 from torchvision.utils import make_grid
 from utils import show, GaussianSmoothing
 import json
+import os
+
+
+parser = argparse.ArgumentParser(description='Evaluation pipeline on MNIST')
+parser.add_argument('--config', type=str, help='path of the .json configuration file that defines the \
+                                                   the type of noise to use and their parameters')
+parser.add_argument('--PathVAE', type=str, help='Path to the VAE/iVAE model')
+parser.add_argument('--PathClassifier', type=str, help='Path to the classifier model')
+parser.add_argument('--batch_size', type=int, default='64' ,help='size of the testing set batch')
+parser.add_argument('--verbose', type=bool, default=False, help='monitor the evaluation process')
+parser.add_argument('--path', type=str, default='', help='path to store the results of the evaluation')
+parser.add_argument('--cuda', type=bool, default=True, help='use GPUs')
+
+args = parser.parse_args()
+
 
 def white_noise(input, std):
     to_return = input + std * torch.randn_like(input)
@@ -18,16 +33,7 @@ def salt_pepper_noise(input, proba_ones):
     input[mask] = torch.bernoulli(torch.ones_like(input[mask])*0.5)
     return input
 
-def main():
-    parser = argparse.ArgumentParser(description='Evaluation pipeline on MNIST')
-    parser.add_argument('--config', type=str, help='path of the .json configuration file that defines the \
-                                                       the type of noise to use and their parameters')
-    parser.add_argument('--PathVAE', type=str, help='Path to the VAE/iVAE model')
-    parser.add_argument('--PathClassifier', type=str, help='Path to the classifier model')
-    parser.add_argument('--batch_size', type=int, default='64' ,help='size of the testing set batch')
-    parser.add_argument('--verbose', type=bool, default=False, help='monitor the evaluation process')
-
-    args = parser.parse_args()
+def main(args):
 
     with open(args.config) as config_file:
         dico_config = json.load(config_file)
@@ -44,28 +50,44 @@ def main():
 
 
     ## loading the VAE model
-    vae_param = torch.load(args.PathVAE)['model'] ## to do : automatically load the kwargs from the experimentation file
-    kwargs = {'x_dim': 28**2, 'z_dim': 10, 'h_dim1': 512, 'h_dim2': 256}
-    vae_model = VAE(**kwargs)
-    vae_model.load_state_dict(vae_param)
-    mu_p = torch.nn.Parameter()
-    log_var_p = torch.nn.Parameter()
-    param_svi = [mu_p, log_var_p]
-    lr_SVI = 1e-4
-    optimizer_SVI = torch.optim.Adam([{'params' : param_svi}], lr=lr_SVI) ## to do : make the loading of the optimizer automatic
-    disable_grad(param_svi)
+
+    #vae_param = torch.load(args.PathVAE)['model'] ## to do : automatically load the kwargs from the experimentation file
+    vae_loading = torch.load(args.PathVAE)
+    args_vae = vae_loading['config']
+
+
+    if args_vae['type'] == 'IVAE':
+        vae_model = iVAE(x_dim=28**2, args=args_vae, z_dim=args_vae['z_dim'], h_dim1=args_vae['arch'][0], h_dim2=args_vae['arch'][1])
+        vae_model.load_state_dict(vae_loading['model'])
+    elif args_vae['type'] == 'VAE':
+        print('TO DO')
+    elif args_vae['type'] == 'PC':
+        print('TO DO')
+
+
+    #kwargs = {'x_dim': 28**2, 'z_dim': 10, 'h_dim1': 512, 'h_dim2': 256}
+    #vae_model = VAE(**kwargs)
+    #vae_model.load_state_dict(vae_param)
+    #mu_p = torch.nn.Parameter()
+    #log_var_p = torch.nn.Parameter()
+    #param_svi = [mu_p, log_var_p]
+    #lr_SVI = 1e-4
+    #optimizer_SVI = torch.optim.Adam([{'params' : param_svi}], lr=lr_SVI) ## to do : make the loading of the optimizer automatic
+    #disable_grad(param_svi)
 
     ## loading the classification model
-    classif_param = torch.load(args.PathClassifier)
+    cl_loading = torch.load(args.PathClassifier)
+    args_cl = cl_loading['config']
     classif_model = Classifier()
-    classif_model.load_state_dict(classif_param)
+    classif_model.load_state_dict(cl_loading['model'])
 
-    if torch.cuda.is_available():
+    if args.cuda:
         vae_model.cuda()
         classif_model.cuda()
+
     ## load the testing database
     kwargs = {'batch_size': args.batch_size,
-              'num_workers': 1,
+              'num_workers': 8,
               'pin_memory': True,
               'shuffle': False
             }
@@ -78,7 +100,8 @@ def main():
     dataset = datasets.MNIST('../../DataSet/MNIST/', train=False,
                               transform=transform)
     test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
-    std = 0.5
+
+
     ## evaluation loop
     #for noise in args.NoiseType:
     for noise_type in dico_config.keys():
@@ -140,5 +163,10 @@ def main():
                 #if batch_idx >=0:
                 #    break
 
+
 if __name__ == '__main__':
-    main()
+    print(vars(args))
+    ## prepare output directory
+    os.makedirs(args.path)
+
+    main(args)

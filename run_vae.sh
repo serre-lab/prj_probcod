@@ -16,7 +16,7 @@ zdim=5
 verbose=false
 
 # NOW=$(date +"%m-%d-%Y_%H-%M-%S")
-NOW='test'
+NOW='test2'
 
 exp_name="${NOW}_${type}_lrsvi=${lr_svi}_lr=${lr}_nb_it=${nb_it}_[${hdim1},${hdim2},${zdim}]"
 
