@@ -57,7 +57,7 @@ def evaluate(args, test_loader, model):
     val_KL_loss = []
     # train_loss_gen = []
 
-    vae = model
+
     # vae, phi = model
     # param_svi= phi.parameters()
     
@@ -68,7 +68,7 @@ def evaluate(args, test_loader, model):
         data = (data>0.001).float() #torch.bernoulli(data)
         
         #batch_size = data.shape[0]
-        phi = vae(data, nb_it=args.nb_it)
+        phi = model(data, nb_it=args.nb_it)
         """
         phi = PHI()
         if args.cuda:
@@ -98,8 +98,8 @@ def evaluate(args, test_loader, model):
         
         disable_grad(param_svi)
         """
-        z = vae.sampling(phi.mu_p, phi.log_var_p)
-        reco = vae.decoder(z)
+        z = model.sampling(phi.mu_p, phi.log_var_p)
+        reco = model.decoder(z)
         loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none')
         val_reco_loss += reco_loss.data.tolist()
         val_KL_loss += KL_loss.data.tolist()
@@ -140,7 +140,9 @@ def main(args):
                                                 shuffle=False)
     
     ## model
-    vae = iVAE(x_dim = 28**2, args=args, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim)
+    vae_model = iVAE(x_dim = 28**2, lr_svi=args.lr_svi, \
+               h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim,\
+               cuda=args.cuda)
     #vae = VAE(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim)
     # phi = PHI()
 
@@ -148,14 +150,14 @@ def main(args):
     # optimizer_SVI = torch.optim.RMSprop([{'params' : param_svi}], lr=lr_SVI, momentum=0.9)
     
     if args.cuda:
-        vae = vae.cuda()
+        vae_model = vae_model.cuda()
         # phi = phi.cuda()
 
     # param_svi = list(phi.parameters())
     
-    optimizer = torch.optim.Adam(vae.parameters(), lr= args.lr)
+    optimizer = torch.optim.Adam(vae_model.parameters(), lr= args.lr)
 
-    all_param = vae.param_enc + vae.param_dec # + param_svi
+    all_param = vae_model.param_enc + vae_model.param_dec # + param_svi
     disable_grad(all_param)
     # update_rate = 50
     # scheduler = StepLR(optimizer, step_size=update_rate, gamma=0.5)
@@ -173,7 +175,7 @@ def main(args):
         train_KL_loss = 0
         train_loss_gen = 0
 
-        vae.train()
+        vae_model.train()
 
         for batch_idx, (data, label) in enumerate(train_loader):
             
@@ -186,22 +188,22 @@ def main(args):
             #data = torch.bernoulli(data)
             
             ## Initialise the posterior output
-            phi = vae(data, nb_it=args.nb_it)
+            phi = vae_model(data, nb_it=args.nb_it)
 
             ## Amortized learning of the likelihood parameter
-            enable_grad(vae.param_dec)
+            enable_grad(vae_model.param_dec)
             optimizer.zero_grad()
-            vae.step(data, phi)
+            vae_model.step(data, phi)
             optimizer.step()
-            disable_grad(vae.param_dec)
+            disable_grad(vae_model.param_dec)
 
             ## Amortized learning of the posterior parameter
-            enable_grad(vae.param_enc)
+            enable_grad(vae_model.param_enc)
             optimizer.zero_grad()
-            mu, log_var = vae.encoder(data.view(-1, 784))
-            reco, _, loss_gen, reco_loss, KL_loss = vae.step(data, mu=mu, log_var=log_var)
+            mu, log_var = vae_model.encoder(data.view(-1, 784))
+            reco, _, loss_gen, reco_loss, KL_loss = vae_model.step(data, mu=mu, log_var=log_var)
             optimizer.step()
-            disable_grad(vae.param_enc)
+            disable_grad(vae_model.param_enc)
 
             train_reco_loss += reco_loss
             train_KL_loss += KL_loss
@@ -236,7 +238,7 @@ def main(args):
 
         if args.path != '' and args.ckpt_freq!=0 and idx_epoch % args.ckpt_freq==0:
             save_dict =  {
-                'model' : vae.state_dict(),
+                'model' : vae_model.state_dict(),
                 #'optim': optimizer_SVI.state_dict(),
                 'config': vars(args),
             }
@@ -246,7 +248,7 @@ def main(args):
                         )
 
         if idx_epoch % args.eval_freq == 0 and args.eval_freq!=0:
-            val_results = evaluate(args, test_loader, vae)
+            val_results = evaluate(args, test_loader, vae_model)
             
             print(' Eval Epoch: {} -- Loss {:6.2f} (reco : {:6.2f} -- KL : {:6.2f}) '.format(
                     idx_epoch,
@@ -270,7 +272,7 @@ def main(args):
                 results.update(val_results)
                 
                 save_dict =  {
-                    'model' : vae.state_dict(),
+                    'model' : vae_model.state_dict(),
                     #'optim': optimizer_SVI.state_dict(),
                     'config': vars(args),
                     'results': results,

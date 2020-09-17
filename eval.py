@@ -6,6 +6,7 @@ from torchvision.utils import make_grid, save_image
 from utils import show, GaussianSmoothing
 import json
 import os
+import pandas as pd
 
 
 parser = argparse.ArgumentParser(description='Evaluation pipeline on MNIST')
@@ -17,7 +18,7 @@ parser.add_argument('--batch_size', type=int, default='64' ,help='size of the te
 parser.add_argument('--verbose', type=bool, default=False, help='monitor the evaluation process')
 parser.add_argument('--path', type=str, default='', help='path to store the results of the evaluation')
 parser.add_argument('--cuda', type=bool, default=True, help='use GPUs')
-parser.add_argument('--disp-freq', type=int, default=10, help='image display epoch interval')
+parser.add_argument('--disp', type=bool, default=True, help='image display epoch interval')
 
 args = parser.parse_args()
 
@@ -59,7 +60,9 @@ def main(args):
     print('ARGS_VAE')
     print(args_vae)
     if args_vae['type'] == 'IVAE':
-        vae_model = iVAE(x_dim=28**2, args=args_vae, z_dim=args_vae['z_dim'], h_dim1=args_vae['arch'][0], h_dim2=args_vae['arch'][1])
+        vae_model = iVAE(x_dim=28**2, lr_svi=args_vae['lr_svi'], z_dim=args_vae['z_dim'], \
+                         h_dim1=args_vae['arch'][0], h_dim2=args_vae['arch'][1],\
+                         cuda=args.cuda)
         vae_model.load_state_dict(vae_loading['model'])
     elif args_vae['type'] == 'VAE':
         print('TO DO')
@@ -103,7 +106,7 @@ def main(args):
                               transform=transform)
     test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
 
-
+    #df_results = pd.DataFrame(columns)
     ## evaluation loop
     #for noise in args.NoiseType:
     for noise_type in dico_config.keys():
@@ -120,21 +123,19 @@ def main(args):
                 data, label = data.cuda(), label.cuda()
                 data_blurred = noise_function[noise_type](data,param_noise)
 
-                phi = vae_model(data_blurred, nb_it=args_vae['nb_it'])
-
-                z = vae_model.sampling(phi.mu, phi.log_var)
-                reco = vae_model.decoder(z)
+                reco, z, mu_l_p, log_var_p, loss_gen, reco_loss, KL_loss = vae_model.forward_eval(data_blurred, nb_it=args_vae['nb_it'])
                 output = classif_model(reco.view_as(data))
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct += pred.eq(label.view_as(pred)).sum().item()
 
-            if args.verbose:
+            if args.disp:
 
                 z = vae_model.sampling(phi.mu, phi.log_var)
                 reco = vae_model.decoder(z)
-                x_reco = reco.view(len(data), 1, 28, 28)
+                x_reco = reco.view_as(data)
                 img_to_plot = make_grid(torch.cat([data[0:8, :, :, :], data_blurred[0:8, :, :, :], x_reco], 0), **grid_param)
                 save_image(img_to_plot, fp=os.path.join(args.path, 'image_{}_{}.png'.format(noise_type, param_noise)))
+
 
                 print(100. * correct/len(test_loader.dataset))
 

@@ -81,10 +81,10 @@ class VAE(nn.Module):
 
 
 class iVAE(nn.Module):
-    def __init__(self, x_dim, args, z_dim, h_dim1=512, h_dim2=256 ):
+    def __init__(self, lr_svi, x_dim, z_dim, h_dim1=512, h_dim2=256, cuda=True ):
         super(iVAE, self).__init__()
-        self.args = args
-        #self.lr_svi=lr_svi
+        self.to_cuda = cuda
+        self.lr_svi=lr_svi
         # encoder part
         self.ff1 = nn.Linear(x_dim, h_dim1)
         self.ff2 = nn.Linear(h_dim1, h_dim2)
@@ -124,10 +124,10 @@ class iVAE(nn.Module):
 
     def forward(self, x, nb_it):
         phi = PHI()
-        #if self.args.cuda:
-        phi = phi.cuda()
+        if self.to_cuda:
+            phi = phi.cuda()
         param_svi = list(phi.parameters())
-        optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=self.args.lr_svi)
+        optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=self.lr_svi)
 
         phi.mu_p.data, phi.log_var_p.data = self.encoder(torch.flatten(x, start_dim=1))
 
@@ -143,10 +143,10 @@ class iVAE(nn.Module):
 
     def forward_eval(self, x, nb_it, extra=False):
         phi = PHI()
-        if self.args.cuda:
+        if self.to_cuda:
             phi = phi.cuda()
         param_svi = list(phi.parameters())
-        optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=self.args.lr_svi)
+        optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=self.lr_svi)
 
         phi.mu_p.data, phi.log_var_p.data = self.encoder(torch.flatten(x, start_dim=1))
         if extra:
