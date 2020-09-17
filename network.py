@@ -124,8 +124,8 @@ class iVAE(nn.Module):
 
     def forward(self, x, nb_it):
         phi = PHI()
-        if self.args.cuda:
-            phi = phi.cuda()
+        #if self.args.cuda:
+        phi = phi.cuda()
         param_svi = list(phi.parameters())
         optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=self.args.lr_svi)
 

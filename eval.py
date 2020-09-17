@@ -2,7 +2,7 @@ import argparse
 import torch
 from network import VAE, iVAE, enable_grad, disable_grad, loss_function, Classifier
 from torchvision import datasets, transforms
-from torchvision.utils import make_grid
+from torchvision.utils import make_grid, save_image
 from utils import show, GaussianSmoothing
 import json
 import os
@@ -17,6 +17,7 @@ parser.add_argument('--batch_size', type=int, default='64' ,help='size of the te
 parser.add_argument('--verbose', type=bool, default=False, help='monitor the evaluation process')
 parser.add_argument('--path', type=str, default='', help='path to store the results of the evaluation')
 parser.add_argument('--cuda', type=bool, default=True, help='use GPUs')
+parser.add_argument('--disp-freq', type=int, default=10, help='image display epoch interval')
 
 args = parser.parse_args()
 
@@ -55,7 +56,8 @@ def main(args):
     vae_loading = torch.load(args.PathVAE)
     args_vae = vae_loading['config']
 
-
+    print('ARGS_VAE')
+    print(args_vae)
     if args_vae['type'] == 'IVAE':
         vae_model = iVAE(x_dim=28**2, args=args_vae, z_dim=args_vae['z_dim'], h_dim1=args_vae['arch'][0], h_dim2=args_vae['arch'][1])
         vae_model.load_state_dict(vae_loading['model'])
@@ -116,47 +118,30 @@ def main(args):
 
             for batch_idx, (data, label) in enumerate(test_loader):
                 data, label = data.cuda(), label.cuda()
-                if args.verbose:
-                    if batch_idx == 0:
-                        img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
-                        show(img_to_plot.detach().cpu(), title='original image',
-                             saving_path='../simulation/Image/image_original_{}_{}.png'.format(noise_type,param_noise))
+                data_blurred = noise_function[noise_type](data,param_noise)
 
-                data = noise_function[noise_type](data,param_noise)
+                phi = vae_model(data_blurred, nb_it=args_vae['nb_it'])
 
-                if args.verbose:
-                    if batch_idx == 0:
-                        img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
-                        show(img_to_plot.detach().cpu(), title='Blurred image',
-                             saving_path='../simulation/Image/image_blurred_{}_{}.png'.format(noise_type,param_noise))
-
-                mu_p.data, log_var_p.data = vae_model.encoder(data.view(-1, 784))
-
-                ## Iterative refinement of the posterior
-                enable_grad(param_svi)
-
-                for idx_it in range(1000):
-                    optimizer_SVI.zero_grad()
-                    z = vae_model.sampling(mu_p, log_var_p)
-                    reco = vae_model.decoder(z)
-                    loss_gen, reco_loss, KL_loss = loss_function(reco, data, mu_p, log_var_p)
-                    loss_gen.backward()
-                    optimizer_SVI.step()
-
-                if args.verbose:
-                    reco_to_plot = reco.view_as(data)
-                    img_to_plot = make_grid(reco_to_plot[0:8, :, :, :], **grid_param)
-                    show(img_to_plot.detach().cpu(), title='Reconstructed image',
-                         saving_path='../simulation/Image/image_reconstructed_{}_{}.png'.format(noise_type, param_noise))
-                disable_grad(param_svi)
-
+                z = vae_model.sampling(phi.mu, phi.log_var)
+                reco = vae_model.decoder(z)
                 output = classif_model(reco.view_as(data))
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct += pred.eq(label.view_as(pred)).sum().item()
+
+            if args.verbose:
+
+                z = vae_model.sampling(phi.mu, phi.log_var)
+                reco = vae_model.decoder(z)
+                x_reco = reco.view(len(data), 1, 28, 28)
+                img_to_plot = make_grid(torch.cat([data[0:8, :, :, :], data_blurred[0:8, :, :, :], x_reco], 0), **grid_param)
+                save_image(img_to_plot, fp=os.path.join(args.path, 'image_{}_{}.png'.format(noise_type, param_noise)))
+
+                print(100. * correct/len(test_loader.dataset))
+
                 ##
 
-                if batch_idx >= 0:
-                    break
+                #if batch_idx >= 0:
+                #    break
 
             if args.verbose:
                 print(100. * correct / len(test_loader.dataset))
