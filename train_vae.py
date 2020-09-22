@@ -10,6 +10,8 @@ from network import VAE, iVAE, PHI, loss_function, enable_grad, disable_grad
 from torchvision.utils import make_grid, save_image
 import argparse
 
+import pandas as pd
+
 #import matplotlib as mpl
 #mpl.use('Agg')
 
@@ -18,16 +20,23 @@ parser = argparse.ArgumentParser()
 
 # model
 parser.add_argument('--type', type=str, default='IVAE', help='could be IVAE or VAE')
-## To do : Do not hardcode the 3 layer architecture in the VAE network
 parser.add_argument('--arch', type=int, nargs='+', default=[512,256], help='architecture of the encoder')
 parser.add_argument('--z_dim', type=int, default=5, help='architecture of the encoder')
+parser.add_argument('--activation_function', type=str, default='tanh', help='path to store the trained network')
+parser.add_argument('--layer', type=str, default='fc', help='type of layer in the encoder/decoder')
+parser.add_argument('--decoder_type', type=str, default='bernoulli', help='type of the decoder')
+
+# inference
 parser.add_argument('--nb_it', type=int, default=20, help='number of iteration of the iterative inference')
-parser.add_argument('--lr_svi', type=float, default = 1e-4, help='learning rate of the iterative inference')
+parser.add_argument('--svi_lr', type=float, default = 1e-4, help='learning rate of the iterative inference')
+parser.add_argument('--svi_optimizer', type=str, default = 'ADAM', help='type of the inference optimizer')
+parser.add_argument('--beta', type=float, default = 1, help='beta coefficient of the KL')
 
 # training
 parser.add_argument('--lr', type=float, default=1e-3, help='learning rate of the amortized inference')
 parser.add_argument('--batch_size', type=int, default=1024, help='training batch size')
 parser.add_argument('--nb_epoch', type=int, default=200, help='number of training epochs')
+parser.add_argument('--train_optimizer', type=str, default = 'ADAM', help='type of the learning optimizer')
 
 # other
 parser.add_argument('--cuda', type=bool, default=True, help='use GPUs')
@@ -39,11 +48,11 @@ parser.add_argument('--disp-freq', type=int, default=10, help='image display epo
 parser.add_argument('--ckpt-freq', type=int, default=0, help='checkpoint epoch interval')
 parser.add_argument('--eval-freq', type=int, default=20, help='evaluation epoch interval')
 parser.add_argument('--early-stop', type=int, default=3, help='early stopping iterations')
-parser.add_argument('--activation_function', type=str, default='tanh', help='path to store the trained network')
+
 
 parser.add_argument('--path', type=str, default='', help='path to store the trained network')
 
-
+parser.add_argument('--path_db', type=str, default='db_TRAIN.csv', help='path to the training database')
 
 args = parser.parse_args()
 
@@ -51,35 +60,32 @@ def evaluate(args, test_loader, model):
     
     val_reco_loss = []
     val_KL_loss = []
-    # train_loss_gen = []
-
-
-    # vae, phi = model
-    # param_svi= phi.parameters()
-    
-    # vae.eval()
 
     for batch_idx, (data, label) in enumerate(test_loader):
         data = data.cuda()
-        data = (data>0.001).float() #torch.bernoulli(data)
-        
-        #batch_size = data.shape[0]
-        if args.type == 'IVAE':
-            phi = model(data, nb_it=args.nb_it)
-            z = model.sampling(phi.mu_p, phi.log_var_p)
-            reco = model.decoder(z)
-            loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none')
 
-        elif args.type == 'VAE':
-            _,_,_,_, loss_gen, reco_loss, KL_loss = model.forward_eval(data, reduction='none')
+    if args.decoder_type == 'bernoulli':
+        data = (data > 0.001).float()
 
-        val_reco_loss += reco_loss.data.tolist()
-        val_KL_loss += KL_loss.data.tolist()
 
-        # train_loss_gen += loss_gen.data.tolist()
+    if args.type == 'IVAE':
+        phi = model(data, nb_it=args.nb_it)
+        z = model.sampling(phi.mu_p, phi.log_var_p)
+        reco = model.decoder(z)
+        loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none',
+                                                     beta=args.beta, decoder_type=args.decoder_type)
+        #_, _, _, _, loss_gen, reco_loss, KL_loss, _ = model.forward_eval(data, reduction='sum', nb_it=args.nb_it)
+
+    elif args.type == 'VAE':
+        _,_,_,_, loss_gen, reco_loss, KL_loss,_ = model.forward_eval(data, reduction='none')
+
+
+    val_reco_loss += reco_loss.data.tolist()
+    val_KL_loss += KL_loss.data.tolist()
+
 
     results = { 
-        'val_rec_loss_data': val_reco_loss, 
+        'val_rec_loss_data': val_reco_loss,
         'val_KL_loss_data': val_KL_loss,
         'val_rec_loss': np.mean(val_reco_loss), 
         'val_KL_loss': np.mean(val_KL_loss),
@@ -92,8 +98,12 @@ def main(args):
     ## manual seed
     torch.manual_seed(args.seed)
 
-    ## data 
-    transform = transforms.Compose([transforms.ToTensor()])
+    ## data
+    if args.decoder_type == 'bernoulli':
+        transform = transforms.Compose([transforms.ToTensor()])
+    elif args.decoder_type == 'gaussian':
+        transform = transforms.Compose([transforms.ToTensor(),
+                                        transforms.Normalize((0.1307,), (0.3081,))])
 
     dataset1 = datasets.MNIST('../DataSet/MNIST/', train=True, download=True, transform=transform)
     dataset2 = datasets.MNIST('../DataSet/MNIST/', train=False, download=True, transform=transform)
@@ -114,25 +124,25 @@ def main(args):
     
     ## model
     if args.type == 'IVAE':
-        vae_model = iVAE(x_dim = 28**2, lr_svi=args.lr_svi, \
-               h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim,\
-               activation= args.activation_function, cuda=args.cuda)
+        vae_model = iVAE(x_dim = 28**2, lr_svi=args.svi_lr,h_dim1=args.arch[0], h_dim2=args.arch[1],
+                         z_dim=args.z_dim, activation= args.activation_function, cuda=args.cuda,
+                         svi_optimizer= args.svi_optimizer, beta=args.beta, decoder_type=args.decoder_type
+                         )
     elif args.type == 'VAE':
-        vae_model = VAE(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim, \
-                        activation=args.activation_function)
-    #vae = VAE(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim)
-    # phi = PHI()
+        vae_model = VAE(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim,
+                        activation=args.activation_function, layer=args.layer, beta=args.beta,
+                        decoder_type=args.decoder_type)
 
-    # optimizer_SVI = torch.optim.SGD([{'params' : param_svi}], lr=lr_SVI, momentum=0.9)
-    # optimizer_SVI = torch.optim.RMSprop([{'params' : param_svi}], lr=lr_SVI, momentum=0.9)
     
     if args.cuda:
         vae_model = vae_model.cuda()
         # phi = phi.cuda()
 
     # param_svi = list(phi.parameters())
-    
-    optimizer = torch.optim.Adam(vae_model.parameters(), lr= args.lr)
+
+    if args.train_optimizer == 'ADAM':
+        optimizer = torch.optim.Adam(vae_model.parameters(), lr= args.lr)
+
 
     all_param = vae_model.param_enc + vae_model.param_dec # + param_svi
     disable_grad(all_param)
@@ -144,7 +154,8 @@ def main(args):
                 'pad_value': 1,
                 'nrow': 8}
     
-    best_val_loss=200000
+    best_val_loss = 20000
+    best_epoch = 1
 
     ## training
     for idx_epoch in range(args.nb_epoch):
@@ -158,11 +169,9 @@ def main(args):
             
             if args.cuda:
                 data = data.cuda()
-            
-            #batch_size = data.shape[0]
 
-            data = (data>0.001).float() 
-            #data = torch.bernoulli(data)
+            if args.decoder_type == 'bernoulli':
+                data = (data>0.001).float()
             
             ## Initialise the posterior output
             if args.type == 'IVAE':
@@ -186,7 +195,7 @@ def main(args):
             elif args.type == 'VAE':
                 enable_grad(all_param)
                 optimizer.zero_grad()
-                reco, z, mu, log_var, loss_gen, reco_loss, KL_loss = vae_model.forward_eval(data)
+                reco, z, mu, log_var, loss_gen, reco_loss, KL_loss,_ = vae_model.forward_eval(data)
                 loss_gen.backward()
                 optimizer.step()
                 disable_grad(all_param)
@@ -196,28 +205,17 @@ def main(args):
             train_KL_loss += KL_loss
             train_loss_gen += loss_gen
 
-        # scheduler.step()
-        
         if args.verbose:
-            # if idx_epoch % args.print_freq == 0:
-            #     print('\n\nNEW LEARNING RATElr={0:.1e}\n\n'.format(optimizer.param_groups[0]['lr']))
         
             if (idx_epoch+1) % args.print_freq == 0:
                 print(' Train Epoch: {} -- Loss {:6.2f} (reco : {:6.2f} -- KL : {:6.2f}) '.format(
-                    idx_epoch,
+                    idx_epoch+1,
                     train_loss_gen / len(train_loader.dataset),
                     train_reco_loss / len(train_loader.dataset),
                     train_KL_loss / len(train_loader.dataset)
                 ))
             
             if (idx_epoch+1) % args.disp_freq == 0:
-                # print("original image")
-                # img_to_plot = make_grid(data[0:8, :, :, :], **grid_param)
-                # show(img_to_plot.detach().cpu())
-                # print("recontructed image")
-                # x_reco = reco.view(len(data), 1, 28, 28)
-                # img_to_plot = make_grid(x_reco[0:8, :, :, :], **grid_param)
-                # show(img_to_plot.detach().cpu())
 
                 x_reco = reco.view(len(data), 1, 28, 28)
                 img_to_plot = make_grid(torch.cat([data[0:8, :, :, :], x_reco[0:8, :, :, :]], 0), **grid_param)
@@ -238,7 +236,7 @@ def main(args):
             val_results = evaluate(args, test_loader, vae_model)
             
             print(' Eval Epoch: {} -- Loss {:6.2f} (reco : {:6.2f} -- KL : {:6.2f}) '.format(
-                    idx_epoch,
+                    idx_epoch+1,
                     val_results['val_rec_loss'] + val_results['val_KL_loss'],
                     val_results['val_rec_loss'],
                     val_results['val_KL_loss'],
@@ -247,33 +245,61 @@ def main(args):
             if best_val_loss > val_results['val_KL_loss'] + val_results['val_rec_loss']:
                 early_stopping_count = 0
                 best_val_loss = val_results['val_KL_loss'] + val_results['val_rec_loss']
+                best_epoch = idx_epoch + 1
 
-                avg_train_rec_loss = train_reco_loss / len(train_loader.dataset)
-                avg_train_KL_loss = train_KL_loss / len(train_loader.dataset)
+            avg_train_rec_loss = train_reco_loss / len(train_loader.dataset)
+            avg_train_KL_loss = train_KL_loss / len(train_loader.dataset)
                 
-                results={
-                    'train_rec_loss': avg_train_rec_loss, 
-                    'train_KL_div': avg_train_KL_loss,
-                }
-                
-                results.update(val_results)
-                
-                save_dict =  {
-                    'model' : vae_model.state_dict(),
-                    #'optim': optimizer_SVI.state_dict(),
-                    'config': vars(args),
-                    'results': results,
-                }
-                if args.path != '':
-                    torch.save(save_dict, 
-                                os.path.join(args.path, 'model_results.pth')
-                                )
+            results={
+                'train_rec_loss': avg_train_rec_loss,
+                'train_KL_div': avg_train_KL_loss,
+            }
+
+            results.update(val_results)
+
+            save_dict =  {
+                'model' : vae_model.state_dict(),
+                'config': vars(args),
+                'results': results,
+            }
+            if args.path != '':
+                torch.save(save_dict,
+                            os.path.join(args.path, 'model_results.pth')
+                            )
             else:
                 early_stopping_count += 1
                 if early_stopping_count > args.ealy_stop:
                     print('stopped early')
                     break
                 # early_stopping_count
+
+    df_results = pd.read_csv(args.path_db, index_col=0)
+
+    rows = {
+        'model_path': args.path,
+        'model_type': args.type,
+        'architecture': args.arch,
+        'z_dim': args.z_dim,
+        'af': args.activation_function,
+        'layer': args.layer,
+        'decoder_type':args.decoder_type,
+        'svi_optimizer': args.svi_optimizer,
+        'svi_lr': args.svi_lr,
+        'svi_nb_it': args.nb_it,
+        'beta':args.beta,
+        'lr': args.lr,
+        'nb_epoch': args.nb_epoch,
+        'train_optimizer': args.train_optimizer,
+        'batch_size': args.batch_size,
+        'seed' : args.seed,
+        'best_loss': float('%.3f'%(best_val_loss)),
+        'best_epoch': best_epoch
+    }
+
+    df_results = df_results.append(rows, ignore_index=True)
+
+    df_results.to_csv(args.path_db)
+
 
 if __name__ == '__main__':
     

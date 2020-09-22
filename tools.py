@@ -31,10 +31,9 @@ class GaussianSmoothing(nn.Module):
         dim (int, optional): The number of dimensions of the data.
             Default value is 2 (spatial).
     """
-    def __init__(self, channels, kernel_size, sigma, dim=2):
-
-
+    def __init__(self, channels, kernel_size, sigma, dim=2, normalize_output=False):
         super(GaussianSmoothing, self).__init__()
+        #self.normalize = normalize_output
         if kernel_size % 2 == 0:
             int_size = (kernel_size // 2)
             self.pad_tuple = (int_size, int_size-1, int_size, int_size-1)
@@ -84,7 +83,7 @@ class GaussianSmoothing(nn.Module):
             )
 
     def forward(self, input, useless_param):
-        input = F.pad(input, self.pad_tuple, mode='reflect')
+        input = F.pad(input, self.pad_tuple, mode='constant')
         """
         Apply gaussian filter to input.
         Arguments:
@@ -92,6 +91,32 @@ class GaussianSmoothing(nn.Module):
         Returns:
             filtered (torch.Tensor): Filtered output.
         """
-        return self.conv(input, weight=self.weight, groups=self.groups)
+        input_filtered = self.conv(input, weight=self.weight, groups=self.groups)
+        input_filtered = normalize_data(input_filtered)
+        #if self.normalize :
+        #    data_fl = torch.flatten(input_filtered, start_dim=1)
+        #    out, _ = data_fl.max(dim=1)
+        #    out = out.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+        #    input_filtered /= out
+
+        return input_filtered
+
+
+def normalize_data(data):
+    data_fl = torch.flatten(data, start_dim=1)
+
+    out_min, _ = data_fl.min(dim=1)
+    # print(out_min.size())
+    data_fl = data_fl - out_min[:, None]
+
+    out_max, _ = data_fl.max(dim=1)
+    out_max = out_max[:, None, None, None]  # .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+    return data / out_max
+
+#def normalize_data(data):
+#    data_fl = torch.flatten(data, start_dim=1)
+#    out, _ = data_fl.max(dim=1)
+#    out = out.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+#    return data/out
 
 

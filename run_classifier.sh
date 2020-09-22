@@ -5,8 +5,8 @@ type=CL
 batch_size=64
 epoch=40
 
-NOW='test'
-# NOW=$(date +"%m-%d-%Y_%H-%M-%S")
+#NOW=''
+NOW=$(date +"%Y-%m-%d_%H-%M-%S")
 exp_name="${NOW}_${type}"
 
 path="../prj_probcod_exps/$exp_name"
