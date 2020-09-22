@@ -268,12 +268,12 @@ def main(args):
                             )
             else:
                 early_stopping_count += 1
-                if early_stopping_count > args.ealy_stop:
+                if early_stopping_count > args.early_stop:
                     print('stopped early')
                     break
                 # early_stopping_count
 
-    df_results = pd.read_csv(args.path_db, index_col=0)
+    df_results = pd.DataFrame()
 
     rows = {
         'model_path': args.path,
@@ -297,15 +297,15 @@ def main(args):
     }
 
     df_results = df_results.append(rows, ignore_index=True)
-
-    df_results.to_csv(args.path_db)
+    df_results.to_csv(os.path.join(args.path, args.path_db))
 
 
 if __name__ == '__main__':
     
     print(vars(args))
     ## prepare output directory
-    os.makedirs(args.path)
+    if not os.path.exists(args.path):
+        os.makedirs(args.path)
 
     main(args)
 
