@@ -260,13 +260,13 @@ class iVAE(nn.Module):
 
         ## Iterative refinement of the posterior
         enable_grad(param_svi)
-        for idx_it in range(nb_it+1):
+        for idx_it in range(nb_it):
 
             optimizer_SVI.zero_grad()
             reco, z, loss_gen, reco_loss, KL_loss = self.step(x, phi, reduction=reduction)
             optimizer_SVI.step()
             
-            if (freq_extra!=0) and (idx_it%freq_extra) == 0:
+            if (freq_extra!=0) and ((idx_it%freq_extra== 0) or idx_it==nb_it-1):
 
                 reco_l.append(reco.data)
                 z_l.append(z.data)
