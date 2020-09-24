@@ -49,6 +49,7 @@ parser.add_argument('--path', type=str, default='', help='path to store the resu
 parser.add_argument('--path_db', type=str, default='db_EVAL.csv', help='path to the training database')
 parser.add_argument('--save_in_db', type=int, default=1, help='1 to save in the database, 0 otherwise')
 parser.add_argument('--save_latent', type=int, default=0, help='1 to save the latent space of the first batch, 0 otherwise')
+parser.add_argument('--denoising_baseline', type=int, default=0, help='Compute the ELBO for a denoising framework')
 
 
 
@@ -184,14 +185,19 @@ def main(args):
                 data, label = data.cuda(), label.cuda()
                 data_blurred = noise_function[noise_type](data,param_noise)
 
+
                 if args.normalized_output == 1:
                     data_blurred = (data_blurred - 0.1307)/0.3081
 
+                data = (data - 0.1307) / 0.3081
 
-
-                reco, z, mu_l_p, log_var_p, loss_gen, reco_loss, KL_loss, nb_it_l = vae_model.forward_eval(data_blurred,
+                if args.denoising_baseline == 1:
+                    reco, z, mu_l_p, log_var_p, loss_gen, reco_loss, KL_loss, nb_it_l = vae_model.forward_eval(
+                        data_blurred, x_clear=data,
+                        nb_it=args.nb_it_eval, freq_extra=args.freq_extra)
+                else :
+                    reco, z, mu_l_p, log_var_p, loss_gen, reco_loss, KL_loss, nb_it_l = vae_model.forward_eval(data_blurred,
                                                                                                            nb_it=args.nb_it_eval, freq_extra=args.freq_extra)
-
                 if batch_idx == 1 and args.save_latent:
                     mu_l_p_to_save = mu_l_p
                     log_var_p_to_save = log_var_p
@@ -282,6 +288,7 @@ def main(args):
 
                 'best_accu_eval': float('%.2f' % (best_accu)),
                 'best_it_eval': int(best_it),
+                'denoising_baseline':args.denoising_baseline,
                 'path_to_results': filename,
                 'seed': args.seed
             }

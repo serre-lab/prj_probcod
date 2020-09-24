@@ -247,7 +247,7 @@ class iVAE(nn.Module):
 
         return phi
 
-    def forward_eval(self, x, nb_it, freq_extra=0, reduction='sum'):
+    def forward_eval(self, x, nb_it, freq_extra=0, reduction='sum', x_clear=None):
         phi = PHI()
         if self.to_cuda:
             phi = phi.cuda()
@@ -266,7 +266,7 @@ class iVAE(nn.Module):
         for idx_it in range(nb_it):
 
             optimizer_SVI.zero_grad()
-            reco, z, loss_gen, reco_loss, KL_loss = self.step(x, phi, reduction=reduction)
+            reco, z, loss_gen, reco_loss, KL_loss = self.step(x, phi, reduction=reduction, x_clear=x_clear)
 
             optimizer_SVI.step()
 
@@ -296,18 +296,20 @@ class iVAE(nn.Module):
         else:
             return reco, z, phi.mu_p.data, phi.log_var_p.data, loss_gen, reco_loss, KL_loss, 0
 
-    def step(self, x, phi=None, mu=None, log_var=None, reduction='sum'):
+    def step(self, x, phi=None, mu=None, log_var=None, reduction='sum', x_clear=None):
         
         if phi is not None:
             z = self.sampling(phi.mu_p, phi.log_var_p)
             reco = self.decoder(z)
             loss_gen, reco_loss, KL_loss = loss_function(reco, x, phi.mu_p, phi.log_var_p,
-                                                         reduction=reduction, beta=self.beta, decoder_type=self.decoder_type)
+                                                         reduction=reduction, beta=self.beta,
+                                                         decoder_type=self.decoder_type, x_clear=x_clear)
         else:
             z = self.sampling(mu, log_var)
             reco = self.decoder(z)
             loss_gen, reco_loss, KL_loss = loss_function(reco, x, mu, log_var,
-                                                         reduction=reduction, beta=self.beta, decoder_type= self.decoder_type)
+                                                         reduction=reduction, beta=self.beta,
+                                                         decoder_type= self.decoder_type, x_clear=x_clear)
         loss_gen.backward()
 
         return reco, z, loss_gen, reco_loss, KL_loss
@@ -335,13 +337,16 @@ class PHI(nn.Module):
 
 #    return x_r.view_as(x), (mu_p, log_var_p), (mu_l, log_var_l)
 
-def loss_function(recon_x, x, mu_p, log_var_p, reduction='mean', beta=1, decoder_type='bernoulli'):
+def loss_function(recon_x, x, mu_p, log_var_p, reduction='mean', beta=1, decoder_type='bernoulli', x_clear=None):
     ''' VAE loss function '''
 
     if decoder_type == 'bernoulli':
         reco = F.binary_cross_entropy(recon_x, x.view(-1, 784), reduction='none').sum(-1)
     elif decoder_type == 'gaussian':
-        reco = F.mse_loss(recon_x, x.view(-1, 784), reduction='none').sum(-1)
+        if x_clear is None:
+            reco = F.mse_loss(recon_x, x.view(-1, 784), reduction='none').sum(-1)
+        else:
+            reco = F.mse_loss(recon_x, x_clear.view(-1, 784), reduction='none').sum(-1)
 
     #reco = F.mse_loss(recon_x, x.view_as(recon_x), reduction='sum')
     KLD =  - beta * 0.5 * torch.sum(1 + log_var_p - mu_p.pow(2) - log_var_p.exp(), -1)
