@@ -56,6 +56,9 @@ def salt_pepper_noise(input, proba_ones):
     to_out[mask] = torch.bernoulli(torch.ones_like(input[mask])*0.5)
     return to_out
 
+def no_noise(input,param=None,idx_param=None):
+    return input
+
 def main(args):
 
     torch.manual_seed(args.seed)
@@ -64,9 +67,11 @@ def main(args):
         dico_config = json.load(config_file)
 
 
-    noise_function = {'white': white_noise,
-                      'gaussian': gaussian_noise,
-                      'saltpepper': salt_pepper_noise}
+    noise_function = {'NoNoise' : no_noise,
+                      'WhiteNoise': white_noise,
+                      'Blurring': gaussian_noise,
+                      'SaltPepper': salt_pepper_noise,
+                      }
 
     ## setting the grid param
     grid_param = {'padding': 2, 'normalize': False,
@@ -117,9 +122,9 @@ def main(args):
                 print('Evaluating on {} noise with parameter {}'.format(noise_type, param_noise))
             correct = 0
 
-            if noise_type == 'gaussian':
+            if noise_type == 'Blurring':
                 smoothing = GaussianSmoothing(1, 28, param_noise, normalize_output=args.normalized_output).cuda()
-                noise_function['gaussian'] = smoothing.forward
+                noise_function['Blurring'] = smoothing.forward
 
             for batch_idx, (data, label) in enumerate(test_loader):
                 data, label = data.cuda(), label.cuda()

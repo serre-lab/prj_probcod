@@ -1,16 +1,17 @@
 #!/bin/bash
 
 ## architecture
-type=VAE
+type=IVAE
 hdim1=512
 hdim2=256
-zdim=15
+zdim=2
 
 activation_function=tanh
 layer=fc
 decoder_type='gaussian'
 #beta=4
-declare -a beta_list=(0 0.5 1 1.5 2 2.5)
+declare -a beta_list=(1)
+#declare -a beta_list=(0 0.5 1 1.5 2 2.5)
 #beta=1
 ## inference
 svi_lr=1e-2
@@ -21,20 +22,18 @@ svi_optimizer=ADAM
 
 ## training
 lr=1e-3
-nb_epoch=200
+nb_epoch=2
 train_optimizer=ADAM
 seed=1
 
 device=4
-verbose=False
+verbose=0
 
 for beta in ${beta_list[@]}; do
   NOW=$(date +"%Y-%m-%d_%H-%M-%S")
-
   exp_name="${NOW}_${type}_svi_lr=${svi_lr}_lr=${lr}_beta=${beta}_nb_it=${nb_it}_[${hdim1},${hdim2},${zdim}]_af=${activation_function}_layer=${layer}_decoder=${decoder_type}"
   path="../prj_probcod_exps/$exp_name"
   rm -r $path
-
   CUDA_VISIBLE_DEVICES=$device python3 train_vae.py \
       --type $type \
      --svi_lr $svi_lr \
@@ -52,7 +51,6 @@ for beta in ${beta_list[@]}; do
      --beta $beta \
      --decoder_type $decoder_type \
      --verbose $verbose
-
 done
 
 

@@ -47,6 +47,8 @@ parser.add_argument('--svi_optimizer_eval', type=str, default = 'ADAM', help='ty
 ## saving path
 parser.add_argument('--path', type=str, default='', help='path to store the results of the evaluation')
 parser.add_argument('--path_db', type=str, default='db_EVAL.csv', help='path to the training database')
+parser.add_argument('--save_in_db', type=int, default=1, help='1 to save in the database, 0 otherwise')
+parser.add_argument('--save_latent', type=int, default=0, help='1 to save the latent space of the first batch, 0 otherwise')
 
 
 
@@ -56,7 +58,6 @@ args = parser.parse_args()
 def main(args):
 
     torch.manual_seed(args.seed)
-    print(args.normalized_output)
     with open(args.config) as config_file:
         dico_config = json.load(config_file)
 
@@ -73,11 +74,15 @@ def main(args):
         to_out[mask] = torch.bernoulli(torch.ones_like(input[mask]) * 0.5)
         return to_out
 
+    def no_noise(input,param=None,idx_param=None):
+        return input
 
 
-    noise_function = {'white': white_noise,
-                      'gaussian': gaussian_noise,
-                      'saltpepper': salt_pepper_noise}
+
+    noise_function = {'NoNoise' : no_noise,
+                      'WhiteNoise': white_noise,
+                      'Blurring': gaussian_noise,
+                      'SaltPepper': salt_pepper_noise}
 
     ## setting the grid param
     grid_param = {'padding': 2, 'normalize': True,
@@ -171,24 +176,25 @@ def main(args):
                 print('Evaluating on {} noise with parameter {}'.format(noise_type, param_noise))
             correct = 0
 
-            if noise_type == 'gaussian':
+            if noise_type == 'Blurring':
                 smoothing = GaussianSmoothing(1, 10, param_noise, normalize_output=args.normalized_output).cuda()
-                noise_function['gaussian'] = smoothing.forward
+                noise_function['Blurring'] = smoothing.forward
 
             for batch_idx, (data, label) in enumerate(test_loader):
                 data, label = data.cuda(), label.cuda()
                 data_blurred = noise_function[noise_type](data,param_noise)
 
                 if args.normalized_output == 1:
-                    #print('normalize')
-                    #data_blurred = normalize_data(data_blurred)
                     data_blurred = (data_blurred - 0.1307)/0.3081
-                    #data_blurred = (data_blurred - data_blurred.mean())/data_blurred.std()
 
 
 
                 reco, z, mu_l_p, log_var_p, loss_gen, reco_loss, KL_loss, nb_it_l = vae_model.forward_eval(data_blurred,
                                                                                                            nb_it=args.nb_it_eval, freq_extra=args.freq_extra)
+
+                if batch_idx == 1 and args.save_latent:
+                    mu_l_p_to_save = mu_l_p
+                    log_var_p_to_save = log_var_p
 
 
                 if (args.freq_extra != 0) and (args_vae['type'] == 'IVAE'):
@@ -209,7 +215,7 @@ def main(args):
 
             acc = 100.*(correct/len(dataset))
 
-            print('Accuracy : {0}'.format(acc))
+            #print('Accuracy : {0}'.format(acc))
             if args_vae['type'] == 'IVAE':
                 accu = acc.cpu()
 
@@ -228,10 +234,15 @@ def main(args):
                 dico_result = {'accuracy' : acc.tolist()}
             elif args_vae['type'] == 'VAE':
                 dico_result = {'accuracy': acc.tolist()}
+            print('accuracy', dico_result['accuracy'])
 
+            if args.save_latent:
+                dico_result['latent_mu'] = mu_l_p_to_save.tolist()
+                dico_result['latent_log_var'] = log_var_p_to_save.tolist()
+                #print(dico_result['latent_mu'])
 
             torch.save(dico_result, filename)
-            
+
             if args.disp:
                 to_plot = torch.cat([data[0:8, :, :, :], data_blurred[0:8, :, :, :]],0)
                 if (args.freq_extra != 0) and (args_vae['type'] == 'IVAE'):
@@ -277,7 +288,8 @@ def main(args):
 
             df_results = df_results.append(rows, ignore_index=True)
 
-            df_results.to_csv(args.path_db)
+            if args.save_in_db == 1:
+                df_results.to_csv(args.path_db)
 
 if __name__ == '__main__':
     print(vars(args))

@@ -5,9 +5,9 @@ device=6
 batch_size=1024
 normalized_output=1
 
+#PathClassifier='../prj_probcod_exps/2020-09-21_08-24-05_CL'
 PathClassifier='../prj_probcod_exps/2020-09-21_08-24-05_CL'
-
-config="config_eval_ori2.json"
+config="config_eval.json"
 
 
 NOW=$(date +"%Y-%m-%d_%H-%M-%S")
