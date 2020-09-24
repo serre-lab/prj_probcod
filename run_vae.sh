@@ -22,12 +22,13 @@ svi_optimizer=ADAM
 
 ## training
 lr=1e-3
-nb_epoch=2
+nb_epoch=200
 train_optimizer=ADAM
 seed=1
-
-device=4
-verbose=0
+#--reduce_training_digit $reduce_training_digit\
+#reduce_training_digit=[1,2]
+device=2
+verbose=1
 
 for beta in ${beta_list[@]}; do
   NOW=$(date +"%Y-%m-%d_%H-%M-%S")
@@ -51,6 +52,7 @@ for beta in ${beta_list[@]}; do
      --beta $beta \
      --decoder_type $decoder_type \
      --verbose $verbose
+
 done
 
 

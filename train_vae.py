@@ -48,6 +48,7 @@ parser.add_argument('--disp-freq', type=int, default=10, help='image display epo
 parser.add_argument('--ckpt-freq', type=int, default=0, help='checkpoint epoch interval')
 parser.add_argument('--eval-freq', type=int, default=20, help='evaluation epoch interval')
 parser.add_argument('--early-stop', type=int, default=3, help='early stopping iterations')
+parser.add_argument('--reduced_training_digits', type=int, nargs='+', default=None, help='reduce the training distribution to the selected digits')
 
 
 parser.add_argument('--path', type=str, default='', help='path to store the trained network')
@@ -97,6 +98,8 @@ def main(args):
 
     ## manual seed
     torch.manual_seed(args.seed)
+    #print(args.reduced_training_digits)
+    #stop
 
     ## data
     if args.decoder_type == 'bernoulli':
@@ -273,7 +276,8 @@ def main(args):
                     break
                 # early_stopping_count
 
-    df_results = pd.DataFrame()
+
+    df_results = pd.read_csv(args.path_db, index_col=0)
 
     rows = {
         'model_path': args.path,
@@ -297,7 +301,7 @@ def main(args):
     }
 
     df_results = df_results.append(rows, ignore_index=True)
-    df_results.to_csv(os.path.join(args.path, args.path_db))
+    df_results.to_csv(args.path_db)
 
 
 if __name__ == '__main__':
