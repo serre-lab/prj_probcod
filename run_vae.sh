@@ -25,14 +25,8 @@ lr=1e-3
 nb_epoch=200
 train_optimizer=ADAM
 seed=1
-<<<<<<< HEAD
-#--reduce_training_digit $reduce_training_digit\
-#reduce_training_digit=[1,2]
-device=2
-=======
-
 device=4
->>>>>>> 5d72d44442703d5a9d9e5c778471772d615cdad3
+
 verbose=1
 
 #for beta in ${beta_list[@]}; do

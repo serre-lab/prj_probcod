@@ -213,8 +213,6 @@ def main(args):
                     data = (data - 0.1307)/0.3081
                     data_blurred = (data_blurred - 0.1307)/0.3081
 
-                data = (data - 0.1307) / 0.3081
-
                 if args.denoising_baseline == 1:
                     reco, z, mu_l_p, log_var_p, loss_gen, reco_loss, KL_loss, nb_it_l = vae_model.forward_eval(
                         data_blurred, x_clear=data,
