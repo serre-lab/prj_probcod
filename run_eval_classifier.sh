@@ -1,12 +1,15 @@
 #!/bin/sh
 
 type=CL
-device=6
+device=4
 batch_size=1024
 normalized_output=1
 
-#PathClassifier='../prj_probcod_exps/2020-09-21_08-24-05_CL'
-PathClassifier='../prj_probcod_exps/2020-09-21_08-24-05_CL'
+# PathClassifier='../prj_probcod_exps/2020-09-21_08-24-05_CL'
+# PathClassifier='../prj_probcod_exps/2020-09-21_08-24-05_CL'
+PathClassifier='../prj_probcod_exps/2020-09-24_10-49-23_CL'
+
+
 config="config_eval.json"
 
 

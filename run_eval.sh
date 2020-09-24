@@ -21,7 +21,7 @@ PathClassifier='../prj_probcod_exps/2020-09-22_20-03-05_CL'
 
 config="config_eval.json"
 
-for PathVAE in ${PathVAE_list[@]}; do
+# for PathVAE in ${PathVAE_list[@]}; do
 #NOW='test'
 NOW=$(date +"%Y-%m-%d_%H-%M-%S")
 exp_name="${NOW}_EVAL_lrsvi=${svi_lr_eval}_nb_it=${nb_it_eval}"
@@ -38,11 +38,7 @@ CUDA_VISIBLE_DEVICES=$device python3 eval.py  \
                 --svi_lr_eval $svi_lr_eval \
                 --normalized_output $normalized_output \
                 --save_in_db $save_in_db \
-<<<<<<< HEAD
                 --save_latent $save_latent \
                 --denoising_baseline $denoising_baseline
-done
-=======
-                --save_latent $save_latent
-done
->>>>>>> 34350d53f1740f1071c5b980a463ab67108232a8
+
+
