@@ -42,7 +42,7 @@ parser.add_argument('--train_optimizer', type=str, default = 'ADAM', help='type 
 parser.add_argument('--cuda', type=bool, default=True, help='use GPUs')
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 
-parser.add_argument('--verbose', type=bool, default=True, help='show everything')
+parser.add_argument('--verbose', type=int, default=1, help='show everything')
 parser.add_argument('--print-freq', type=int, default=1, help='logging epoch interval')
 parser.add_argument('--disp-freq', type=int, default=10, help='image display epoch interval')
 parser.add_argument('--ckpt-freq', type=int, default=0, help='checkpoint epoch interval')
@@ -205,7 +205,7 @@ def main(args):
             train_KL_loss += KL_loss
             train_loss_gen += loss_gen
 
-        if args.verbose:
+        if args.verbose == 1:
         
             if (idx_epoch+1) % args.print_freq == 0:
                 print(' Train Epoch: {} -- Loss {:6.2f} (reco : {:6.2f} -- KL : {:6.2f}) '.format(
