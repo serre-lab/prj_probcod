@@ -1,6 +1,6 @@
 #!/bin/sh
 
-device=7
+device=6
 type=CL
 batch_size=64
 epoch=40
@@ -11,7 +11,7 @@ exp_name="${NOW}_${type}"
 
 path="../prj_probcod_exps/$exp_name"
 
-rm -r $path
+rm -rf $path
 
 CUDA_VISIBLE_DEVICES=$device python3 train_classifier.py \
                               --path $path\
