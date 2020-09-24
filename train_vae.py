@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torchvision import datasets, transforms
-from network import VAE, iVAE, PHI, loss_function, enable_grad, disable_grad
+from network import VAE, iVAE, PCN, PHI, loss_function, loss_function_pc, enable_grad, disable_grad
 from torchvision.utils import make_grid, save_image
 import argparse
 
@@ -79,6 +79,11 @@ def evaluate(args, test_loader, model):
     elif args.type == 'VAE':
         _,_,_,_, loss_gen, reco_loss, KL_loss,_ = model.forward_eval(data, reduction='none')
 
+    elif args.type == 'PCN':
+        phi = model(data, nb_it=args.nb_it)
+        reco = model.decoder(phi.mu_p)
+        loss_gen, reco_loss, KL_loss = loss_function_pc(reco, data, phi.mu_p, reduction='none',
+                                                     beta=args.beta, decoder_type=args.decoder_type)
 
     val_reco_loss += reco_loss.data.tolist()
     val_KL_loss += KL_loss.data.tolist()
@@ -133,7 +138,13 @@ def main(args):
                         activation=args.activation_function, layer=args.layer, beta=args.beta,
                         decoder_type=args.decoder_type)
 
-    
+    elif args.type == 'PCN':
+        vae_model = PCN(x_dim = 28**2, lr_svi=args.svi_lr,h_dim1=args.arch[0], h_dim2=args.arch[1],
+                         z_dim=args.z_dim, activation= args.activation_function, cuda=args.cuda,
+                         svi_optimizer= args.svi_optimizer, beta=args.beta, decoder_type=args.decoder_type
+                         )
+                         
+
     if args.cuda:
         vae_model = vae_model.cuda()
         # phi = phi.cuda()
@@ -199,6 +210,17 @@ def main(args):
                 loss_gen.backward()
                 optimizer.step()
                 disable_grad(all_param)
+
+            elif args.type == 'PCN':
+                
+                phi = vae_model(data, nb_it=args.nb_it)
+                
+                ## Amortized learning of the likelihood parameter
+                enable_grad(vae_model.param_dec)
+                optimizer.zero_grad()
+                reco, _, loss_gen, reco_loss, KL_loss = vae_model.step(data, phi)
+                optimizer.step()
+                disable_grad(vae_model.param_dec)
 
 
             train_reco_loss += reco_loss

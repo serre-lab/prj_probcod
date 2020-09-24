@@ -324,7 +324,171 @@ class PHI(nn.Module):
         self.mu = 0
     
 
+
+
+class PCN(nn.Module):
+    def __init__(self, lr_svi, x_dim, z_dim, h_dim1=512, h_dim2=256, cuda=True,
+                 activation='tanh', svi_optimizer='ADAM', beta=1, decoder_type='bernoulli'):
+        super(PCN, self).__init__()
+
+        self.decoder_type = decoder_type
+        self.beta = beta
+        self.to_cuda = cuda
+        self.lr_svi=lr_svi
+        if svi_optimizer == 'ADAM':
+            self.optimizer = torch.optim.Adam
+
+        # encoder part
+        # self.ff1 = nn.Linear(x_dim, h_dim1)
+        # self.ff2 = nn.Linear(h_dim1, h_dim2)
+        # self.ff3_mu = nn.Linear(h_dim2, z_dim)
+        # self.ff3_var = nn.Linear(h_dim2, z_dim)
+        # decoder part
+        self.fb4 = nn.Linear(z_dim, h_dim2)
+        self.fb5 = nn.Linear(h_dim2, h_dim1)
+        self.fb6 = nn.Linear(h_dim1, x_dim)
+
+        if activation == 'tanh':
+            self.activ_func = torch.nn.Tanh()
+        elif activation == 'relu':
+            self.activ_func = torch.nn.ReLU()
+
+        # self.enc = nn.Sequential(self.ff1, self.activ_func, self.ff2, self.activ_func)
+        self.dec = nn.Sequential(self.fb4, self.activ_func, self.fb5, self.activ_func)
+
+        # self.fb6_mu = nn.Linear(h_dim1, x_dim)
+        # self.fb6_var = nn.Linear(h_dim1, x_dim)
+
+        # self.param_enc = [self.ff1.weight, self.ff1.bias, self.ff2.weight, self.ff2.bias,
+        #                   self.ff3_mu.weight, self.ff3_mu.bias, self.ff3_var.weight, self.ff3_var.bias]
+
+        self.param_enc = []
+        self.param_dec = [self.fb4.weight, self.fb4.bias, self.fb5.weight, self.fb5.bias,
+                          self.fb6.weight, self.fb6.bias]
+
+        self.z_dim = z_dim
+
+    # def encoder(self, x):
+    #     #h = torch.tanh(self.ff1(x))
+    #     #h = torch.tanh(self.ff2(h))
+    #     h = self.enc(x)
+    #     mu = self.ff3_mu(h)
+    #     log_var = self.ff3_var(h)
+    #     return mu, log_var
+
+    def sampling(self, mu=None, log_var=None, n=1):
+        if log_var is None:
+            eps = torch.randn(n, self.z_dim)
+            if self.to_cuda:
+                eps = eps.cuda()
+        else:
+            std = torch.exp(0.5 * log_var)
+            eps = torch.randn_like(std)
+            eps = eps*std 
         
+        z = eps if mu is None else eps+mu
+        
+        return z
+
+    def decoder(self, z):
+        h = self.dec(z)
+
+        if self.decoder_type == 'bernoulli':
+            to_return = torch.sigmoid(self.fb6(h))
+        elif self.decoder_type == 'gaussian':
+            to_return = self.fb6(h)
+        return to_return
+
+    def forward(self, x, nb_it):
+        phi = PHI()
+        if self.to_cuda:
+            phi = phi.cuda()
+        param_svi = list(phi.parameters())
+        optimizer_SVI = self.optimizer(phi.parameters(), lr=self.lr_svi)
+        #optimizer_SVI = torch.optim.Adam
+
+        # phi.mu_p.data, phi.log_var_p.data = self.encoder(torch.flatten(x, start_dim=1))
+        phi.mu_p.data = self.sampling(n=x.shape[0])
+
+        ## Iterative refinement of the posterior
+        enable_grad(param_svi)
+        for idx_it in range(nb_it):
+            optimizer_SVI.zero_grad()
+            _, _, loss_gen, _, _ = self.step(x, phi)
+            optimizer_SVI.step()
+        disable_grad(param_svi)
+
+        return phi
+
+    def forward_eval(self, x, nb_it, freq_extra=0, reduction='sum'):
+        phi = PHI()
+        if self.to_cuda:
+            phi = phi.cuda()
+        param_svi = list(phi.parameters())
+        optimizer_SVI = torch.optim.Adam(phi.parameters(), lr=self.lr_svi)
+
+        # phi.mu_p.data, phi.log_var_p.data = self.encoder(torch.flatten(x, start_dim=1))
+        phi.mu_p.data = self.sampling(n=x.shape[0])
+        
+        if freq_extra != 0:
+            reco_l, _, _, z_l, loss_gen_l, reco_loss_l, prior_loss_l, nb_it_l = [],[],[],[],[],[],[],[]
+            mu_l = torch.zeros(x.size(0),(nb_it//freq_extra)+1,self.z_dim).cuda()
+            log_var_l = torch.zeros(x.size(0),(nb_it//freq_extra)+1,self.z_dim).cuda()
+        ## Iterative refinement of the posterior
+        enable_grad(param_svi)
+        torch.set_printoptions(precision=10)
+        idx_freq = 0
+        for idx_it in range(nb_it):
+
+            optimizer_SVI.zero_grad()
+            reco, z, loss_gen, reco_loss, prior_loss = self.step(x, phi, reduction=reduction)
+
+            optimizer_SVI.step()
+
+            if (freq_extra!=0) and ((idx_it%freq_extra== 0) or idx_it==nb_it-1):
+                #print(phi.mu_p.data[4,:])
+                reco_l.append(reco.data)
+                z_l.append(z.data)
+                mu_l[:,idx_freq,:] = phi.mu_p.data
+                log_var_l[:, idx_freq, :] = phi.log_var_p.data
+                loss_gen_l.append(loss_gen.data)
+                reco_loss_l.append(reco_loss.data)
+                prior_loss_l.append(prior_loss.data)
+                nb_it_l.append(idx_it)
+                idx_freq+=1
+
+        disable_grad(param_svi)
+
+        if freq_extra != 0:
+            reco_l = torch.stack(reco_l, 1)
+            z_l = torch.stack(z_l, 1)
+            loss_gen_l = torch.stack(loss_gen_l, 0)
+            reco_loss_l = torch.stack(reco_loss_l, 0)
+            prior_loss_l = torch.stack(prior_loss_l, 0)
+            nb_it_l = torch.tensor(nb_it_l)
+            return reco_l, z_l, mu_l, log_var_l, loss_gen_l, reco_loss_l, prior_loss_l, nb_it_l
+        
+        else:
+            return reco, z, phi.mu_p.data, phi.log_var_p.data, loss_gen, reco_loss, prior_loss, 0
+
+    def step(self, x, phi=None, mu=None, log_var=None, reduction='sum'):
+        
+        if phi is not None:
+            z = phi.mu_p
+            reco = self.decoder(z)
+            loss_gen, reco_loss, prior_loss = loss_function_pc(reco, x, phi.mu_p,
+                                                         reduction=reduction, beta=self.beta, decoder_type=self.decoder_type)
+        else:
+            z = self.sampling(n=x.shape[0])
+            reco = self.decoder(z)
+            loss_gen, reco_loss, prior_loss = loss_function_pc(reco, x, mu,
+                                                         reduction=reduction, beta=self.beta, decoder_type= self.decoder_type)
+        loss_gen.backward()
+
+        return reco, z, loss_gen, reco_loss, prior_loss
+    
+
+
 #def forward(self, x):
 #    mu_p, log_var_p = self.encoder(x.view(-1, 784))
 #    z = self.sampling(mu_p, log_var_p)
@@ -360,6 +524,32 @@ def loss_function(recon_x, x, mu_p, log_var_p, reduction='mean', beta=1, decoder
     
     total_loss = reco + KLD
     return total_loss, reco, KLD
+
+def loss_function_pc(recon_x, x, mu_p, reduction='mean', beta=1, decoder_type='bernoulli'):
+    ''' VAE loss function '''
+
+    if decoder_type == 'bernoulli':
+        reco = F.binary_cross_entropy(recon_x, x.view(-1, 784), reduction='none').sum(-1)
+    elif decoder_type == 'gaussian':
+        reco = F.mse_loss(recon_x, x.view(-1, 784), reduction='none').sum(-1)
+
+    prior =  beta * 0.5 * torch.sum(mu_p.pow(2), -1)
+
+    
+    # print(reco.shape)
+    # print(KLD.shape)
+
+    if reduction == 'mean':
+        reco = reco.mean()
+        prior = prior.mean()
+    elif reduction == 'sum':
+        reco = reco.sum()
+        prior = prior.sum()
+    
+    
+    total_loss = reco + prior
+    return total_loss, reco, prior
+
 
 
 def enable_grad(param_group):
