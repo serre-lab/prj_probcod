@@ -1,6 +1,6 @@
 #!/bin/sh
 
-device=7
+device=4
 type=CL
 batch_size=64
 epoch=40

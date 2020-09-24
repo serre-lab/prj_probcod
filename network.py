@@ -378,7 +378,8 @@ class PCN(nn.Module):
 
     def sampling(self, mu=None, log_var=None, n=1):
         if log_var is None:
-            eps = torch.randn(n, self.z_dim)
+            # eps = torch.randn(n, self.z_dim)
+            eps = torch.zeros(n, self.z_dim)
             if self.to_cuda:
                 eps = eps.cuda()
         else:
@@ -450,7 +451,7 @@ class PCN(nn.Module):
                 reco_l.append(reco.data)
                 z_l.append(z.data)
                 mu_l[:,idx_freq,:] = phi.mu_p.data
-                log_var_l[:, idx_freq, :] = phi.log_var_p.data
+                # log_var_l[:, idx_freq, :] = phi.log_var_p.data
                 loss_gen_l.append(loss_gen.data)
                 reco_loss_l.append(reco_loss.data)
                 prior_loss_l.append(prior_loss.data)

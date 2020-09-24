@@ -107,7 +107,7 @@ def main(args):
         transforms.ToTensor()
     ])
 
-    dataset = datasets.MNIST('../../DataSet/MNIST/', train=False,
+    dataset = datasets.MNIST('../DataSet/MNIST/', train=False,
                               transform=transform)
     test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
 
@@ -155,8 +155,11 @@ def main(args):
 
 
             torch.save(dico_result, filename)
+            if os.path.exists(args.path_db):
+                df_results = pd.read_csv(args.path_db, index_col=0)
+            else:
+                df_results = pd.DataFrame()
 
-            df_results = pd.read_csv(args.path_db, index_col=0)
             rows = {
                 'eval_path':args.path,
                 'model_path': args_cl['path'],

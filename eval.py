@@ -11,7 +11,8 @@ from torchvision import datasets, transforms
 
 from torchvision.utils import make_grid, save_image
 
-from network import VAE, iVAE, enable_grad, disable_grad, loss_function, Classifier
+# from network import VAE, iVAE, PCN, enable_grad, disable_gradloss_function, loss_function_pc, Classifier
+from network import VAE, iVAE, PCN, enable_grad, disable_grad, loss_function, loss_function_pc, Classifier
 
 from tools import GaussianSmoothing, normalize_data
 
@@ -49,6 +50,34 @@ parser.add_argument('--path', type=str, default='', help='path to store the resu
 parser.add_argument('--path_db', type=str, default='db_EVAL.csv', help='path to the training database')
 parser.add_argument('--save_in_db', type=int, default=1, help='1 to save in the database, 0 otherwise')
 parser.add_argument('--save_latent', type=int, default=0, help='1 to save the latent space of the first batch, 0 otherwise')
+
+
+
+
+
+
+# {
+#   "NoNoise":{
+#     "param": [0],
+#     "lr_svi" : 1e-2
+#   },
+
+#   "Blurring":{
+#     "param": [1, 2, 3, 4],
+#     "lr_svi" : 1e-2
+#   },
+
+#   "WhiteNoise": {
+#     "param" : [0.2, 0.4,  0.6, 0.8, 1],
+#     "lr_svi": 1e-2
+#   },
+
+#   "SaltPepper": {
+#     "param": [0.1, 0.2, 0.3, 0.4],
+#     "lr_svi": 1e-2
+#   }
+
+# }
 
 
 
@@ -122,8 +151,20 @@ def main(args):
                          h_dim1=args_vae['arch'][0], h_dim2=args_vae['arch'][1],
                         activation=args_vae['activation_function'], beta=args_vae['beta'], decoder_type=args_vae['decoder_type'])
         vae_model.load_state_dict(vae_loading['model'])
-    elif args_vae['type'] == 'PC':
-        print('TO DO')
+    
+    elif args_vae['type'] == 'PCN':
+        if (args.svi_lr_eval !=  args_vae['svi_lr']) and (args.svi_lr_eval !=0):
+            print('svi_lr training : {} -- svi_lr eval :{}'.format(args_vae['svi_lr'], args.svi_lr_eval))
+        if args.nb_it_eval != args_vae['nb_it'] and  (args.nb_it_eval !=0):
+            print('svi_nb_it training : {} -- svi_nb_it eval :{}'.format(args_vae['nb_it'] , args.nb_it_eval))
+        if args.svi_optimizer_eval != args_vae['svi_optimizer']:
+            print('svi_optimizer training : {} -- svi_optimizer eval :{}'.format(args_vae['svi_optimizer'], args.svi_optimizer))
+
+        vae_model = PCN(x_dim=28**2, lr_svi=args.svi_lr_eval, z_dim=args_vae['z_dim'],
+                         h_dim1=args_vae['arch'][0], h_dim2=args_vae['arch'][1],
+                         activation=args_vae['activation_function'], svi_optimizer=args.svi_optimizer_eval,
+                         cuda=args.cuda, beta=args_vae['beta'], decoder_type=args_vae['decoder_type'])
+        vae_model.load_state_dict(vae_loading['model'])
 
     disable_grad(vae_model.parameters())
 
@@ -158,7 +199,7 @@ def main(args):
 
 
 
-    dataset = datasets.MNIST('../../DataSet/MNIST/', train=False,
+    dataset = datasets.MNIST('../DataSet/MNIST/', train=False,
                               transform=transform)
     test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
 
@@ -197,7 +238,7 @@ def main(args):
                     log_var_p_to_save = log_var_p
 
 
-                if (args.freq_extra != 0) and (args_vae['type'] == 'IVAE'):
+                if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE','PCN']):
                     reco_size = reco.size()
                     reco = reco.view(-1,1, 28, 28)
                     label = label.unsqueeze(1).repeat(1,reco_size[1]).view(-1)
@@ -207,7 +248,7 @@ def main(args):
                 output = classif_model(reco)
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
 
-                if (args.freq_extra !=0) and args_vae['type'] == 'IVAE':
+                if (args.freq_extra !=0) and args_vae['type'] in ['IVAE','PCN']:
                     correct += pred.eq(label.view_as(pred)).view(reco_size[0],reco_size[1]).sum(dim=0).float()
 
                 else :
@@ -216,7 +257,7 @@ def main(args):
             acc = 100.*(correct/len(dataset))
 
             #print('Accuracy : {0}'.format(acc))
-            if args_vae['type'] == 'IVAE':
+            if args_vae['type'] in ['IVAE','PCN']:
                 accu = acc.cpu()
 
                 best_accu, indices = accu.max(0)
@@ -230,7 +271,7 @@ def main(args):
             filename = os.path.join(args.path, 'result_{}_{}.pth'.format(noise_type, param_noise))
 
 
-            if args_vae['type'] == 'IVAE':
+            if args_vae['type'] in ['IVAE','PCN']:
                 dico_result = {'accuracy' : acc.tolist()}
             elif args_vae['type'] == 'VAE':
                 dico_result = {'accuracy': acc.tolist()}
@@ -245,7 +286,7 @@ def main(args):
 
             if args.disp:
                 to_plot = torch.cat([data[0:8, :, :, :], data_blurred[0:8, :, :, :]],0)
-                if (args.freq_extra != 0) and (args_vae['type'] == 'IVAE'):
+                if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE','PCN']):
                     reco = reco.view(reco_size[0],reco_size[1],reco.size(-3),reco.size(-2), reco.size(-1))
                     reco = reco.transpose(0,1)
                     reco = reco[:,0:8,:,:,:].reshape(-1,reco.size(-3),reco.size(-2), reco.size(-1))
