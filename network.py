@@ -256,34 +256,37 @@ class iVAE(nn.Module):
 
         phi.mu_p.data, phi.log_var_p.data = self.encoder(torch.flatten(x, start_dim=1))
         if freq_extra != 0:
-            reco_l, mu_l, log_var_l, z_l, loss_gen_l, reco_loss_l, KL_loss_l, nb_it_l = [],[],[],[],[],[],[],[]
-
+            reco_l, _, _, z_l, loss_gen_l, reco_loss_l, KL_loss_l, nb_it_l = [],[],[],[],[],[],[],[]
+            mu_l = torch.zeros(x.size(0),(nb_it//freq_extra)+1,self.z_dim).cuda()
+            log_var_l = torch.zeros(x.size(0),(nb_it//freq_extra)+1,self.z_dim).cuda()
         ## Iterative refinement of the posterior
         enable_grad(param_svi)
+        torch.set_printoptions(precision=10)
+        idx_freq = 0
         for idx_it in range(nb_it):
 
             optimizer_SVI.zero_grad()
             reco, z, loss_gen, reco_loss, KL_loss = self.step(x, phi, reduction=reduction)
-            optimizer_SVI.step()
-            
-            if (freq_extra!=0) and ((idx_it%freq_extra== 0) or idx_it==nb_it-1):
 
+            optimizer_SVI.step()
+
+            if (freq_extra!=0) and ((idx_it%freq_extra== 0) or idx_it==nb_it-1):
+                #print(phi.mu_p.data[4,:])
                 reco_l.append(reco.data)
                 z_l.append(z.data)
-                mu_l.append(phi.mu_p.data)
-                log_var_l.append(phi.log_var_p.data)
+                mu_l[:,idx_freq,:] = phi.mu_p.data
+                log_var_l[:, idx_freq, :] = phi.log_var_p.data
                 loss_gen_l.append(loss_gen.data)
                 reco_loss_l.append(reco_loss.data)
                 KL_loss_l.append(KL_loss.data)
                 nb_it_l.append(idx_it)
+                idx_freq+=1
 
         disable_grad(param_svi)
 
         if freq_extra != 0:
             reco_l = torch.stack(reco_l, 1)
             z_l = torch.stack(z_l, 1)
-            mu_l = torch.stack(mu_l, 1)
-            log_var_l = torch.stack(log_var_l, 1)
             loss_gen_l = torch.stack(loss_gen_l, 0)
             reco_loss_l = torch.stack(reco_loss_l, 0)
             KL_loss_l = torch.stack(KL_loss_l, 0)
