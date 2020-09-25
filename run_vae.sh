@@ -18,12 +18,12 @@ svi_lr=1e-2
 #svi_lr=1e-4
 nb_it=100
 #nb_it=10000
-svi_optimizer=ADAM
+svi_optimizer=adam
 
 ## training
 lr=1e-3
 nb_epoch=200
-train_optimizer=ADAM
+train_optimizer=Adam
 seed=1
 device=4
 
