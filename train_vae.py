@@ -135,7 +135,7 @@ def main(args):
                                                 pin_memory=True, 
                                                 num_workers=8, 
                                                 shuffle=False)
-    
+
     ## model
     if args.type == 'IVAE':
         vae_model = iVAE(x_dim = 28**2, lr_svi=args.svi_lr,h_dim1=args.arch[0], h_dim2=args.arch[1],
@@ -159,7 +159,7 @@ def main(args):
                          z_dim=args.z_dim, activation= args.activation_function, cuda=args.cuda,
                          svi_optimizer= args.svi_optimizer, beta=args.beta, decoder_type=args.decoder_type
                          )
-                         
+
 
     if args.cuda:
         vae_model = vae_model.cuda()
@@ -310,6 +310,7 @@ def main(args):
                 'config': vars(args),
                 'results': results,
             }
+
             if args.path != '':
                 torch.save(save_dict,
                             os.path.join(args.path, 'model_results.pth')

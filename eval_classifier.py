@@ -68,7 +68,6 @@ def main(args):
     with open(args.config) as config_file:
         dico_config = json.load(config_file)
 
-
     noise_function = {'NoNoise' : no_noise,
                       'WhiteNoise': white_noise,
                       'Blurring': gaussian_noise,
@@ -79,7 +78,6 @@ def main(args):
     grid_param = {'padding': 2, 'normalize': False,
                   'pad_value': 1,
                   'nrow': 8}
-
 
     ## loading the VAE model
 
@@ -147,14 +145,11 @@ def main(args):
             best_accu = acc
             best_it = 0
 
-
-
             # put data here
             #results = {}
             filename = os.path.join(args.path, 'result_{}_{}.pth'.format(noise_type, param_noise))
 
             dico_result = {'accuracy': acc}
-
 
             torch.save(dico_result, filename)
             if os.path.exists(args.path_db):
