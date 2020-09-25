@@ -140,7 +140,7 @@ def main(args):
         if args.nb_it_eval != args_vae['nb_it'] and  (args.nb_it_eval !=0):
             print('svi_nb_it training : {} -- svi_nb_it eval :{}'.format(args_vae['nb_it'] , args.nb_it_eval))
         if args.svi_optimizer_eval != args_vae['svi_optimizer']:
-            print('svi_optimizer training : {} -- svi_optimizer eval :{}'.format(args_vae['svi_optimizer'], args.svi_optimizer))
+            print('svi_optimizer training : {} -- svi_optimizer eval :{}'.format(args_vae['svi_optimizer'], args.svi_optimizer_eval))
 
         vae_model = PCN(x_dim=28**2, lr_svi=args.svi_lr_eval, z_dim=args_vae['z_dim'],
                          h_dim1=args_vae['arch'][0], h_dim2=args_vae['arch'][1],
