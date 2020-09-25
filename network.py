@@ -516,15 +516,16 @@ class PHI(nn.Module):
 
 class PCN(nn.Module):
     def __init__(self, lr_svi, x_dim, z_dim, h_dim1=512, h_dim2=256, cuda=True,
-                 activation='tanh', svi_optimizer='adam', beta=1, decoder_type='bernoulli'):
+                 activation='tanh', svi_optimizer='Adam', beta=1, decoder_type='bernoulli'):
         super(PCN, self).__init__()
 
         self.decoder_type = decoder_type
         self.beta = beta
         self.to_cuda = cuda
         self.lr_svi=lr_svi
-        if svi_optimizer == 'adam':
-            self.optimizer = torch.optim.Adam
+        self.optimizer = getattr(torch.optim, svi_optimizer)
+        #if svi_optimizer == 'Adam':
+        #    self.optimizer = torch.optim.Adam
 
         # encoder part
         # self.ff1 = nn.Linear(x_dim, h_dim1)
