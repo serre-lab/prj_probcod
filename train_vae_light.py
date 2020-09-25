@@ -18,7 +18,7 @@ from pytorch_lightning import Trainer
 
 
 
-from utils import show
+from tools import show
 
 
 #matplotlib.rc('xtick', labelsize=15)
@@ -97,6 +97,7 @@ class LitClassifier(pl.LightningModule):
         return [opt_g, opt_d], []
         
         
+
 
 
 dataset = MNIST(os.getcwd(), download=True, transform=transforms.ToTensor())

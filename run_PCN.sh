@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ## architecture
-type=VAE
+type=PCN
 hdim1=512
 hdim2=256
 zdim=15
@@ -10,7 +10,7 @@ activation_function=tanh
 layer=fc
 decoder_type='gaussian'
 #beta=4
-declare -a beta_list=(1)
+beta_list=(0 0.1 0.5 1 5 10)
 #declare -a beta_list=(0 0.5 1 1.5 2 2.5)
 #beta=1
 ## inference

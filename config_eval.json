@@ -1,0 +1,23 @@
+{
+  "NoNoise":{
+    "param": [0],
+    "lr_svi" : 1e-2
+  },
+
+  "Blurring":{
+    "param": [1, 2, 3, 4],
+    "lr_svi" : 1e-3
+  },
+
+  "WhiteNoise": {
+    "param" : [0.2, 0.4,  0.6, 0.8, 1],
+    "lr_svi": 1e-2
+  },
+
+  "SaltPepper": {
+    "param": [0.1, 0.2, 0.3, 0.4],
+    "lr_svi": 1e-2
+  }
+
+}
+

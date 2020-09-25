@@ -1,38 +1,26 @@
 #!/bin/sh
 
-python3 train_classifier.py   --path ../simulation/ \
-                              --batch-size 64 \
-                              --log-interval 100 \
-                              --epochs 30
+device=4
+type=CL
+batch_size=64
+epoch=40
 
-#python3 train_vae.py  --lr_svi 1e-4 \
-#                      --nb_epoch 200 \
-#                      --lr 1e-3 \
-#                      --path ../simulation/ \
-#                      --type IVAE \
-#                      --archi 512 256 40 \
-#                      --nb_it 20
+#NOW=''
+NOW=$(date +"%Y-%m-%d_%H-%M-%S")
+exp_name="${NOW}_${type}"
 
-#python3 train_vae.py  --lr_svi 1e-4 \
-#                      --nb_epoch 200 \
-#                      --lr 1e-3 \
-#                      --path ../simulation/ \
-#                      --type IVAE \
-#                      --archi 512 256 20 \
-#                      --nb_it 20
+path="../prj_probcod_exps/$exp_name"
 
-#python3 train_vae.py  --lr_svi 1e-4 \
-#                      --nb_epoch 200 \
-#                      --lr 1e-3 \
-#                      --path ../simulation/ \
-#                      --type IVAE \
-#                      --archi 512 256 10 \
-#                      --nb_it 20
+DATA_DIR='../DataSet/MNIST/'
 
-#python3 train_vae.py  --lr_svi 1e-4 \
-#                      --nb_epoch 200 \
-#                      --lr 1e-3 \
-#                      --path ../simulation/ \
-#                      --type IVAE \
-#                      --archi 512 256 5 \
-#                      --nb_it 20
+rm -rf $path
+
+
+
+CUDA_VISIBLE_DEVICES=$device python3 train_classifier.py \
+                              --path $path\
+                              --batch-size $batch_size \
+                              --epochs $epoch \
+                              --eval-freq 10 \
+                              --data_dir $DATA_DIR
+

@@ -11,8 +11,7 @@ from torchvision import datasets, transforms
 
 from torchvision.utils import make_grid, save_image
 
-# from network import VAE, iVAE, PCN, enable_grad, disable_gradloss_function, loss_function_pc, Classifier
-from network import VAE, iVAE, PCN, enable_grad, disable_grad, loss_function, loss_function_pc, Classifier
+from network import VAE, iVAE, PCN, IAI, enable_grad, disable_grad, loss_function, loss_function_pc, Classifier
 
 from tools import GaussianSmoothing, normalize_data
 
@@ -44,12 +43,18 @@ parser.add_argument('--nb_it_eval', type=int, default='0' ,help='iteration of th
                                                                 procedure')
 parser.add_argument('--svi_lr_eval', type=float, default='0' ,help='learning_rate of the inference during the \
                                                                     evalutaion process')
-parser.add_argument('--svi_optimizer_eval', type=str, default = 'ADAM', help='type of the inference optimizer')
+parser.add_argument('--svi_optimizer_eval', type=str, default = 'Adam', help='type of the inference optimizer')
+
 ## saving path
 parser.add_argument('--path', type=str, default='', help='path to store the results of the evaluation')
 parser.add_argument('--path_db', type=str, default='db_EVAL.csv', help='path to the training database')
 parser.add_argument('--save_in_db', type=int, default=1, help='1 to save in the database, 0 otherwise')
 parser.add_argument('--save_latent', type=int, default=0, help='1 to save the latent space of the first batch, 0 otherwise')
+parser.add_argument('--denoising_baseline', type=int, default=0, help='Compute the ELBO for a denoising framework')
+
+# data
+parser.add_argument('--data_dir', type=str, default='../DataSet/MNIST/', help='dataset path')
+
 
 
 
@@ -101,8 +106,9 @@ def main(args):
 
     args.path = args.path + "_{}_[{},{},{}]_beta={}".format(args_vae['type'],
                                                     args_vae['arch'][0],args_vae['arch'][1],args_vae['z_dim'],args_vae['beta'])
-
-    os.makedirs(args.path)
+    
+    if not os.path.exists(args.path):
+        os.makedirs(args.path)
 
     if args_vae['type'] == 'IVAE':
         if (args.svi_lr_eval !=  args_vae['svi_lr']) and (args.svi_lr_eval !=0):
@@ -110,12 +116,19 @@ def main(args):
         if args.nb_it_eval != args_vae['nb_it'] and  (args.nb_it_eval !=0):
             print('svi_nb_it training : {} -- svi_nb_it eval :{}'.format(args_vae['nb_it'] , args.nb_it_eval))
         if args.svi_optimizer_eval != args_vae['svi_optimizer']:
-            print('svi_optimizer training : {} -- svi_optimizer eval :{}'.format(args_vae['svi_optimizer'], args.svi_optimizer))
+            print('svi_optimizer training : {} -- svi_optimizer eval :{}'.format(args_vae['svi_optimizer'], args.svi_optimizer_eval))
 
         vae_model = iVAE(x_dim=28**2, lr_svi=args.svi_lr_eval, z_dim=args_vae['z_dim'],
                          h_dim1=args_vae['arch'][0], h_dim2=args_vae['arch'][1],
                          activation=args_vae['activation_function'], svi_optimizer=args.svi_optimizer_eval,
                          cuda=args.cuda, beta=args_vae['beta'], decoder_type=args_vae['decoder_type'])
+        vae_model.load_state_dict(vae_loading['model'])
+
+    elif args_vae['type'] == 'IAI':
+        vae_model = IAI(x_dim=28**2, z_dim=args_vae['z_dim'],
+                         h_dim1=args_vae['arch'][0], h_dim2=args_vae['arch'][1],
+                         activation=args_vae['activation_function'], 
+                         beta=args_vae['beta'], decoder_type=args_vae['decoder_type'])
         vae_model.load_state_dict(vae_loading['model'])
 
     elif args_vae['type'] == 'VAE':
@@ -130,7 +143,7 @@ def main(args):
         if args.nb_it_eval != args_vae['nb_it'] and  (args.nb_it_eval !=0):
             print('svi_nb_it training : {} -- svi_nb_it eval :{}'.format(args_vae['nb_it'] , args.nb_it_eval))
         if args.svi_optimizer_eval != args_vae['svi_optimizer']:
-            print('svi_optimizer training : {} -- svi_optimizer eval :{}'.format(args_vae['svi_optimizer'], args.svi_optimizer))
+            print('svi_optimizer training : {} -- svi_optimizer eval :{}'.format(args_vae['svi_optimizer'], args.svi_optimizer_eval))
 
         vae_model = PCN(x_dim=28**2, lr_svi=args.svi_lr_eval, z_dim=args_vae['z_dim'],
                          h_dim1=args_vae['arch'][0], h_dim2=args_vae['arch'][1],
@@ -138,7 +151,7 @@ def main(args):
                          cuda=args.cuda, beta=args_vae['beta'], decoder_type=args_vae['decoder_type'])
         vae_model.load_state_dict(vae_loading['model'])
 
-    disable_grad(vae_model.parameters())
+    # disable_grad(vae_model.parameters())
 
 
     ## loading the classification model
@@ -171,10 +184,11 @@ def main(args):
 
 
 
-    dataset = datasets.MNIST('../DataSet/MNIST/', train=False,
+    dataset = datasets.MNIST(args.data_dir, train=False,
                               transform=transform)
     test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
 
+    
 
     ## evaluation loop
     for noise_type in dico_config.keys():
@@ -197,20 +211,24 @@ def main(args):
                 data, label = data.cuda(), label.cuda()
                 data_blurred = noise_function[noise_type](data,param_noise)
 
+
                 if args.normalized_output == 1:
+                    data = (data - 0.1307)/0.3081
                     data_blurred = (data_blurred - 0.1307)/0.3081
 
-
-
-                reco, z, mu_l_p, log_var_p, loss_gen, reco_loss, KL_loss, nb_it_l = vae_model.forward_eval(data_blurred,
+                if args.denoising_baseline == 1:
+                    reco, z, mu_l_p, log_var_p, loss_gen, reco_loss, KL_loss, nb_it_l = vae_model.forward_eval(
+                        data_blurred, x_clear=data,
+                        nb_it=args.nb_it_eval, freq_extra=args.freq_extra)
+                else :
+                    reco, z, mu_l_p, log_var_p, loss_gen, reco_loss, KL_loss, nb_it_l = vae_model.forward_eval(data_blurred,
                                                                                                            nb_it=args.nb_it_eval, freq_extra=args.freq_extra)
-
                 if batch_idx == 1 and args.save_latent:
                     mu_l_p_to_save = mu_l_p
                     log_var_p_to_save = log_var_p
 
 
-                if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE','PCN']):
+                if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE','PCN', 'IAI']):
                     reco_size = reco.size()
                     reco = reco.view(-1,1, 28, 28)
                     label = label.unsqueeze(1).repeat(1,reco_size[1]).view(-1)
@@ -220,7 +238,7 @@ def main(args):
                 output = classif_model(reco)
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
 
-                if (args.freq_extra !=0) and args_vae['type'] in ['IVAE','PCN']:
+                if (args.freq_extra !=0) and args_vae['type'] in ['IVAE','PCN', 'IAI']:
                     correct += pred.eq(label.view_as(pred)).view(reco_size[0],reco_size[1]).sum(dim=0).float()
 
                 else :
@@ -229,7 +247,7 @@ def main(args):
             acc = 100.*(correct/len(dataset))
 
             #print('Accuracy : {0}'.format(acc))
-            if args_vae['type'] in ['IVAE','PCN']:
+            if args_vae['type'] in ['IVAE','PCN', 'IAI']:
                 accu = acc.cpu()
 
                 best_accu, indices = accu.max(0)
@@ -241,7 +259,7 @@ def main(args):
 
 
             filename = os.path.join(args.path, 'result_{}_{}.pth'.format(noise_type, param_noise))
-
+            dico_result = {'accuracy': acc.tolist()}
 
             if args_vae['type'] in ['IVAE','PCN']:
                 dico_result = {'accuracy' : acc.tolist()}
@@ -258,7 +276,7 @@ def main(args):
 
             if args.disp:
                 to_plot = torch.cat([data[0:8, :, :, :], data_blurred[0:8, :, :, :]],0)
-                if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE','PCN']):
+                if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE','PCN', 'IAI']):
                     reco = reco.view(reco_size[0],reco_size[1],reco.size(-3),reco.size(-2), reco.size(-1))
                     reco = reco.transpose(0,1)
                     reco = reco[:,0:8,:,:,:].reshape(-1,reco.size(-3),reco.size(-2), reco.size(-1))
@@ -269,8 +287,12 @@ def main(args):
                 img_to_plot = make_grid(to_plot, **grid_param)
                 save_image(img_to_plot, fp=os.path.join(args.path, 'image_{}_{}.png'.format(noise_type, param_noise)))
 
+            
+            if not os.path.isfile(args.path_db):
+                df_results = pd.DataFrame()
+            else:
+                df_results = pd.read_csv(args.path_db, index_col=0)
 
-            df_results = pd.read_csv(args.path_db, index_col=0)
             rows = {
                 'eval_path':args.path,
                 'model_path': args_vae['path'],
@@ -295,6 +317,7 @@ def main(args):
 
                 'best_accu_eval': float('%.2f' % (best_accu)),
                 'best_it_eval': int(best_it),
+                'denoising_baseline':args.denoising_baseline,
                 'path_to_results': filename,
                 'seed': args.seed
             }

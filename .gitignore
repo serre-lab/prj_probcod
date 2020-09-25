@@ -1,4 +1,8 @@
 .DS_Store
-
+config_eval_V2.json
+config_eval_ori.json
+config_eval_the_first.json
+*.csv
+test_db.py
 .vscode/
 __pycache__/
