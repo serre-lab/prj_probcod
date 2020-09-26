@@ -4,5 +4,7 @@ config_eval_ori.json
 config_eval_the_first.json
 *.csv
 test_db.py
+
 .vscode/
 __pycache__/
+logs/

@@ -44,6 +44,7 @@ parser.add_argument('--nb_it_eval', type=int, default='0' ,help='iteration of th
 parser.add_argument('--svi_lr_eval', type=float, default='0' ,help='learning_rate of the inference during the \
                                                                     evalutaion process')
 parser.add_argument('--svi_optimizer_eval', type=str, default = 'Adam', help='type of the inference optimizer')
+
 ## saving path
 parser.add_argument('--path', type=str, default='', help='path to store the results of the evaluation')
 parser.add_argument('--path_db', type=str, default='db_EVAL.csv', help='path to the training database')
@@ -53,6 +54,8 @@ parser.add_argument('--denoising_baseline', type=int, default=0, help='Compute t
 parser.add_argument('--per_sample_monitoring', type=int, default=0, help='Output all the statistics per sample')
 parser.add_argument('--nb_class', type=int, default=10, help='number of class of the classifier')
 
+# data
+parser.add_argument('--data_dir', type=str, default='../DataSet/MNIST/', help='dataset path')
 
 
 
@@ -188,7 +191,7 @@ def main(args):
 
 
 
-    dataset = datasets.MNIST('../DataSet/MNIST/', train=False,
+    dataset = datasets.MNIST(args.data_dir, train=False,
                               transform=transform)
     test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
 
