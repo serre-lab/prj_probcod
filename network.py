@@ -309,8 +309,10 @@ class iVAE(nn.Module):
             loss_gen, reco_loss, KL_loss = loss_function(reco, x, mu, log_var,
                                                          reduction=reduction, beta=self.beta,
                                                          decoder_type= self.decoder_type, x_clear=x_clear)
-        loss_gen.backward()
-
+        if reduction is None:
+            loss_gen.backward(torch.ones_like(loss_gen))
+        else :
+            loss_gen.backward()
         return reco, z, loss_gen, reco_loss, KL_loss
     
 
@@ -699,6 +701,8 @@ def loss_function(recon_x, x, mu_p, log_var_p, reduction='mean', beta=1, decoder
             reco = F.mse_loss(recon_x, x.view(-1, 784), reduction='none').sum(-1)
         else:
             reco = F.mse_loss(recon_x, x_clear.view(-1, 784), reduction='none').sum(-1)
+
+
 
     #reco = F.mse_loss(recon_x, x.view_as(recon_x), reduction='sum')
     KLD =  - beta * 0.5 * torch.sum(1 + log_var_p - mu_p.pow(2) - log_var_p.exp(), -1)

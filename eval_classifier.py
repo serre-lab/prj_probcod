@@ -37,7 +37,9 @@ parser.add_argument('--disp', type=bool, default=True, help='image display epoch
 ### saving path
 parser.add_argument('--path', type=str, default='', help='path to store the results of the evaluation')
 parser.add_argument('--path_db', type=str, default='db_EVAL.csv', help='path to the training database')
-
+parser.add_argument('--nb_class', type=int, default=10, help='number of class of the classifier')
+parser.add_argument('--save_in_db', type=int, default=1, help='option to save the results in database')
+parser.add_argument('--save_latent', type=int, default=0, help='option to save the statistics per sample')
 
 
 args = parser.parse_args()
@@ -117,7 +119,12 @@ def main(args):
     ## evaluation loop
     for noise_type in dico_config.keys():
         for param_noise in dico_config[noise_type]['param']:
-        #for param_noise in dico_config[noise_type]:
+
+            correct_per_sample_to_save = torch.empty(0,).long()
+            softmax_reshape_to_save = torch.empty(0, args.nb_class)
+            prediction_to_save = torch.empty(0, ).long()
+            label_to_save = torch.empty(0).long()
+
             if args.verbose:
                 print('Evaluating on {} noise with parameter {}'.format(noise_type, param_noise))
             correct = 0
@@ -137,7 +144,17 @@ def main(args):
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
 
                 correct += pred.eq(label.view_as(pred)).sum().float()
+                correct_per_sample = pred.eq(label.view_as(pred)) + 0
 
+
+                if args.save_latent:
+                    correct_per_sample_to_save = torch.cat(
+                        [correct_per_sample_to_save, correct_per_sample.detach().cpu()], 0)
+                    softmax_reshape_to_save = torch.cat(
+                        [softmax_reshape_to_save, output.view(data.size(0), -1).detach().cpu()], 0)
+                    prediction_to_save = torch.cat(
+                        [prediction_to_save, pred.view(data.size(0)).detach().cpu()], 0)
+                    label_to_save = torch.cat([label_to_save, label.detach().cpu()], 0)
             acc = 100.*(correct/len(dataset))
 
             print('Accuracy : {0}'.format(acc))
@@ -152,6 +169,12 @@ def main(args):
             filename = os.path.join(args.path, 'result_{}_{}.pth'.format(noise_type, param_noise))
 
             dico_result = {'accuracy': acc}
+
+            if args.save_latent:
+                dico_result['correct_per_sample'] = correct_per_sample_to_save.tolist()
+                dico_result['softmax_per_sample'] = softmax_reshape_to_save.tolist()
+                dico_result['prediction_per_sample'] = prediction_to_save.tolist()
+                dico_result['labels'] = label_to_save.tolist()
 
 
             torch.save(dico_result, filename)
@@ -179,7 +202,9 @@ def main(args):
 
             df_results = df_results.append(rows, ignore_index=True)
 
-            df_results.to_csv(args.path_db)
+            if args.save_in_db == 1:
+                print('save in db')
+                df_results.to_csv(args.path_db)
 
 
 if __name__ == '__main__':

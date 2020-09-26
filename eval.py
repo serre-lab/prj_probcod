@@ -50,6 +50,8 @@ parser.add_argument('--path_db', type=str, default='db_EVAL.csv', help='path to 
 parser.add_argument('--save_in_db', type=int, default=1, help='1 to save in the database, 0 otherwise')
 parser.add_argument('--save_latent', type=int, default=0, help='1 to save the latent space of the first batch, 0 otherwise')
 parser.add_argument('--denoising_baseline', type=int, default=0, help='Compute the ELBO for a denoising framework')
+parser.add_argument('--per_sample_monitoring', type=int, default=0, help='Output all the statistics per sample')
+parser.add_argument('--nb_class', type=int, default=10, help='number of class of the classifier')
 
 
 
@@ -59,6 +61,11 @@ args = parser.parse_args()
 
 
 def main(args):
+
+    if args.per_sample_monitoring == 1:
+        reduction=None
+    else :
+        reduction='sum'
 
     torch.manual_seed(args.seed)
     with open(args.config) as config_file:
@@ -193,6 +200,19 @@ def main(args):
 
         for idx_param, param_noise in enumerate(dico_config[noise_type]['param']):
 
+            nb_evaluated_it = (args.nb_it_eval//args.freq_extra)+1
+
+            mu_l_p_to_save = torch.empty(0,nb_evaluated_it,vae_model.z_dim)
+            log_var_p_to_save = torch.empty(0,nb_evaluated_it,vae_model.z_dim)
+            correct_per_sample_to_save = torch.empty(0,nb_evaluated_it).long()
+            softmax_reshape_to_save = torch.empty(0, nb_evaluated_it, args.nb_class)
+            prediction_to_save = torch.empty(0,nb_evaluated_it).long()
+            ELBO_to_save = torch.empty(0,nb_evaluated_it)
+            reco_loss_to_save = torch.empty(0,nb_evaluated_it)
+            KL_loss_to_save = torch.empty(0,nb_evaluated_it)
+            label_to_save = torch.empty(0).long()
+
+
             if 'lr_svi' in dico_config[noise_type].keys():
                 vae_model.lr_svi = dico_config[noise_type]['lr_svi']
 
@@ -219,28 +239,52 @@ def main(args):
                         nb_it=args.nb_it_eval, freq_extra=args.freq_extra)
                 else :
                     reco, z, mu_l_p, log_var_p, loss_gen, reco_loss, KL_loss, nb_it_l = vae_model.forward_eval(data_blurred,
-                                                                                                           nb_it=args.nb_it_eval, freq_extra=args.freq_extra)
-                if batch_idx == 1 and args.save_latent:
-                    mu_l_p_to_save = mu_l_p
-                    log_var_p_to_save = log_var_p
+                                                                                                           nb_it=args.nb_it_eval, freq_extra=args.freq_extra, reduction=reduction)
+
+
 
 
                 if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE','PCN', 'IAI']):
                     reco_size = reco.size()
                     reco = reco.view(-1,1, 28, 28)
-                    label = label.unsqueeze(1).repeat(1,reco_size[1]).view(-1)
+                    label_it = label.unsqueeze(1).repeat(1,reco_size[1]).view(-1)
                 else :
                     reco = reco.view_as(data)
 
                 output = classif_model(reco)
+
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
 
                 if (args.freq_extra !=0) and args_vae['type'] in ['IVAE','PCN', 'IAI']:
-                    correct += pred.eq(label.view_as(pred)).view(reco_size[0],reco_size[1]).sum(dim=0).float()
-
+                    correct += pred.eq(label_it.view_as(pred)).view(reco_size[0],reco_size[1]).sum(dim=0).float()
+                    correct_per_sample = pred.eq(label_it.view_as(pred)).view(reco_size[0], reco_size[1]) + 0
                 else :
                     correct += pred.eq(label.view_as(pred)).sum().float()
 
+
+                if args.save_latent:
+                    mu_l_p_to_save = torch.cat([mu_l_p_to_save, mu_l_p.detach().cpu()],0)
+                    log_var_p_to_save = torch.cat([log_var_p_to_save, log_var_p.detach().cpu()],0)
+                    correct_per_sample_to_save = torch.cat([correct_per_sample_to_save, correct_per_sample.detach().cpu()],0)
+                    softmax_reshape_to_save = torch.cat([softmax_reshape_to_save, output.view(reco_size[0], reco_size[1], -1).detach().cpu()],0)
+                    prediction_to_save = torch.cat([prediction_to_save, pred.view(reco_size[0],reco_size[1]).detach().cpu()],0)
+                    ELBO_to_save = torch.cat([ELBO_to_save, loss_gen.permute(1,0).detach().cpu()],0)
+                    reco_loss_to_save = torch.cat([reco_loss_to_save, reco_loss.permute(1,0).detach().cpu()],0)
+                    KL_loss_to_save = torch.cat([KL_loss_to_save, KL_loss.permute(1,0).detach().cpu()],0)
+                    label_to_save = torch.cat([label_to_save, label.detach().cpu()],0)
+
+                """
+                if batch_idx == 0 and args.save_latent:
+                    correct_per_sample = pred.eq(label_it.view_as(pred)).view(reco_size[0], reco_size[1]) + 0
+                    mu_l_p_to_save = mu_l_p
+                    log_var_p_to_save = log_var_p
+                    ELBO_to_save = loss_gen.permute(1,0)
+                    reco_loss_to_save = reco_loss.permute(1,0)
+                    KL_loss_to_save = KL_loss.permute(1,0)
+                    prediction_to_save = pred.view(reco_size[0],reco_size[1])
+                    softmax_reshape = output.view(reco_size[0], reco_size[1], -1)
+                    label_to_save = label
+                """
             acc = 100.*(correct/len(dataset))
 
             #print('Accuracy : {0}'.format(acc))
@@ -264,11 +308,16 @@ def main(args):
                 dico_result = {'accuracy': acc.tolist()}
             print('accuracy', dico_result['accuracy'])
 
-            if args.save_latent:
+            if args.save_latent :
                 dico_result['latent_mu'] = mu_l_p_to_save.tolist()
                 dico_result['latent_log_var'] = log_var_p_to_save.tolist()
-                #print(dico_result['latent_mu'])
-
+                dico_result['correct_per_sample'] = correct_per_sample_to_save.tolist()
+                dico_result['softmax_per_sample'] = softmax_reshape_to_save.tolist()
+                dico_result['prediction_per_sample'] = prediction_to_save.tolist()
+                dico_result['ELBO'] = ELBO_to_save.tolist()
+                dico_result['reco_loss'] = reco_loss_to_save.tolist()
+                dico_result['KL_loss'] = KL_loss_to_save.tolist()
+                dico_result['labels'] = label_to_save.tolist()
             torch.save(dico_result, filename)
 
             if args.disp:
@@ -311,12 +360,13 @@ def main(args):
                 'transform': noise_type,
                 'param':param_noise,
                 'normalize_output':args.normalized_output,
+                'per_sample_monitoring':args.per_sample_monitoring,
 
                 'best_accu_eval': float('%.2f' % (best_accu)),
                 'best_it_eval': int(best_it),
                 'denoising_baseline':args.denoising_baseline,
                 'path_to_results': filename,
-                'seed': args.seed
+                'seed': args.seed,
             }
 
             df_results = df_results.append(rows, ignore_index=True)
