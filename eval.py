@@ -46,7 +46,7 @@ parser.add_argument('--svi_lr_eval', type=float, default='0' ,help='learning_rat
 parser.add_argument('--svi_optimizer_eval', type=str, default = 'Adam', help='type of the inference optimizer')
 ## saving path
 parser.add_argument('--path', type=str, default='', help='path to store the results of the evaluation')
-parser.add_argument('--path_db', type=str, default='db_EVAL.csv', help='path to the training database')
+parser.add_argument('--path_db', type=str, default='db_EVAL_original.csv', help='path to the training database')
 parser.add_argument('--save_in_db', type=int, default=1, help='1 to save in the database, 0 otherwise')
 parser.add_argument('--save_latent', type=int, default=0, help='1 to save the latent space of the first batch, 0 otherwise')
 parser.add_argument('--denoising_baseline', type=int, default=0, help='Compute the ELBO for a denoising framework')

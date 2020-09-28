@@ -36,7 +36,7 @@ parser.add_argument('--disp', type=bool, default=True, help='image display epoch
 
 ### saving path
 parser.add_argument('--path', type=str, default='', help='path to store the results of the evaluation')
-parser.add_argument('--path_db', type=str, default='db_EVAL.csv', help='path to the training database')
+parser.add_argument('--path_db', type=str, default='db_EVAL_original.csv', help='path to the training database')
 parser.add_argument('--nb_class', type=int, default=10, help='number of class of the classifier')
 parser.add_argument('--save_in_db', type=int, default=1, help='option to save the results in database')
 parser.add_argument('--save_latent', type=int, default=0, help='option to save the statistics per sample')
