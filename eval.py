@@ -188,10 +188,12 @@ def main(args):
 
 
 
-    dataset = datasets.MNIST('../DataSet/MNIST/', train=False,
+    #dataset = datasets.MNIST('../DataSet/MNIST/', train=False,
+    #                          transform=transform)
+    #test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
+    dataset = datasets.QMNIST('../DataSet/QMNIST/', what='test', download=False,
                               transform=transform)
     test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
-
     
 
     ## evaluation loop

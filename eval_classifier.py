@@ -109,8 +109,10 @@ def main(args):
         transforms.ToTensor()
     ])
 
-    dataset = datasets.MNIST('../DataSet/MNIST/', train=False,
-                              transform=transform)
+    #dataset = datasets.MNIST('../DataSet/MNIST/', train=False,
+    #                          transform=transform)
+    dataset = datasets.QMNIST('../DataSet/QMNIST/', what='test', download=True,
+                                                       transform=transform)
     test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
 
 

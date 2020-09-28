@@ -14,7 +14,7 @@ config="config_eval.json"
 
 
 NOW=$(date +"%Y-%m-%d_%H-%M-%S")
-exp_name="${NOW}_EVAL_${type}"
+exp_name="${NOW}_QMNIST_EVAL_${type}"
 
 path="../prj_probcod_exps/$exp_name"
 
