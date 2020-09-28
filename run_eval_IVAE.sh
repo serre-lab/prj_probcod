@@ -23,6 +23,8 @@ PathClassifier='../prj_probcod_exps/2020-09-22_20-03-05_CL'
 
 config="config_eval.json"
 
+DATA_DIR='../DataSet/MNIST/'
+
 for PathVAE in ${PathVAE_list[@]}; do
 NOW='test'
 #NOW=$(date +"%Y-%m-%d_%H-%M-%S")
@@ -38,5 +40,7 @@ CUDA_VISIBLE_DEVICES=$device python3 eval.py  \
                 --nb_it_eval $nb_it_eval \
                 --freq_extra $freq_extra \
                 --svi_lr_eval $svi_lr_eval \
-                --normalized_output $normalized_output
+                --normalized_output $normalized_output \
+                --data_dir $DATA_DIR
+
 done

@@ -55,6 +55,9 @@ parser.add_argument('--path', type=str, default='', help='path to store the trai
 
 parser.add_argument('--path_db', type=str, default='db_TRAIN.csv', help='path to the training database')
 
+# data
+parser.add_argument('--data_dir', type=str, default='../DataSet/MNIST/', help='dataset path')
+
 args = parser.parse_args()
 
 def evaluate(args, test_loader, model):
@@ -116,8 +119,8 @@ def main(args):
         transform = transforms.Compose([transforms.ToTensor(),
                                         transforms.Normalize((0.1307,), (0.3081,))])
 
-    dataset1 = datasets.MNIST('../DataSet/MNIST/', train=True, download=True, transform=transform)
-    dataset2 = datasets.MNIST('../DataSet/MNIST/', train=False, download=True, transform=transform)
+    dataset1 = datasets.MNIST(args.data_dir, train=True, download=True, transform=transform)
+    dataset2 = datasets.MNIST(args.data_dir, train=False, download=True, transform=transform)
 
     train_loader = torch.utils.data.DataLoader(dataset1, 
                                                 batch_size=args.batch_size,
@@ -132,7 +135,7 @@ def main(args):
                                                 pin_memory=True, 
                                                 num_workers=8, 
                                                 shuffle=False)
-    
+
     ## model
     if args.type == 'IVAE':
         vae_model = iVAE(x_dim = 28**2, lr_svi=args.svi_lr,h_dim1=args.arch[0], h_dim2=args.arch[1],
@@ -156,7 +159,7 @@ def main(args):
                          z_dim=args.z_dim, activation= args.activation_function, cuda=args.cuda,
                          svi_optimizer= args.svi_optimizer, beta=args.beta, decoder_type=args.decoder_type
                          )
-                         
+
 
     if args.cuda:
         vae_model = vae_model.cuda()
@@ -307,6 +310,7 @@ def main(args):
                 'config': vars(args),
                 'results': results,
             }
+
             if args.path != '':
                 torch.save(save_dict,
                             os.path.join(args.path, 'model_results.pth')

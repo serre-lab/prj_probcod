@@ -29,6 +29,9 @@ seed=1
 device=4
 verbose=False
 
+DATA_DIR='../DataSet/MNIST/'
+
+
 for beta in ${beta_list[@]}; do
   NOW=$(date +"%Y-%m-%d_%H-%M-%S")
 
@@ -38,20 +41,21 @@ for beta in ${beta_list[@]}; do
 
   CUDA_VISIBLE_DEVICES=$device python3 train_vae.py \
       --type $type \
-     --svi_lr $svi_lr \
-     --nb_it $nb_it \
-     --nb_epoch $nb_epoch \
-     --lr $lr \
-     --path $path \
-     --arch $hdim1 $hdim2 \
-     --z_dim $zdim \
-     --activation_function $activation_function \
-     --layer $layer \
-     --svi_optimizer $svi_optimizer \
-     --train_optimizer $train_optimizer \
-     --seed $seed \
-     --beta $beta \
-     --decoder_type $decoder_type \
-     --verbose $verbose
+      --svi_lr $svi_lr \
+      --nb_it $nb_it \
+      --nb_epoch $nb_epoch \
+      --lr $lr \
+      --path $path \
+      --arch $hdim1 $hdim2 \
+      --z_dim $zdim \
+      --activation_function $activation_function \
+      --layer $layer \
+      --svi_optimizer $svi_optimizer \
+      --train_optimizer $train_optimizer \
+      --seed $seed \
+      --beta $beta \
+      --decoder_type $decoder_type \
+      --verbose $verbose \
+      --data_dir $DATA_DIR
 
 done

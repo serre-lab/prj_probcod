@@ -28,6 +28,9 @@ seed=1
 device=4
 verbose=False
 
+
+DATA_DIR='../DataSet/MNIST/'
+
 for beta in ${beta_list[@]}; do
   NOW=$(date +"%Y-%m-%d_%H-%M-%S")
 
@@ -51,6 +54,7 @@ for beta in ${beta_list[@]}; do
     --seed $seed \
     --beta $beta \
     --decoder_type $decoder_type \
-    --verbose $verbose
+    --verbose $verbose \
+    --data_dir $DATA_DIR
 
 done

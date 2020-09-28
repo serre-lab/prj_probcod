@@ -36,10 +36,18 @@ parser.add_argument('--disp', type=bool, default=True, help='image display epoch
 
 ### saving path
 parser.add_argument('--path', type=str, default='', help='path to store the results of the evaluation')
+<<<<<<< HEAD
 parser.add_argument('--path_db', type=str, default='db_EVAL_original.csv', help='path to the training database')
+=======
+parser.add_argument('--path_db', type=str, default='db_EVAL.csv', help='path to the training database')
+
+>>>>>>> f746e593db69cc7282f073751972df8a81f2e62b
 parser.add_argument('--nb_class', type=int, default=10, help='number of class of the classifier')
 parser.add_argument('--save_in_db', type=int, default=1, help='option to save the results in database')
 parser.add_argument('--save_latent', type=int, default=0, help='option to save the statistics per sample')
+
+### data
+parser.add_argument('--data_dir', type=str, default='../DataSet/MNIST/', help='dataset path')
 
 
 args = parser.parse_args()
@@ -68,7 +76,6 @@ def main(args):
     with open(args.config) as config_file:
         dico_config = json.load(config_file)
 
-
     noise_function = {'NoNoise' : no_noise,
                       'WhiteNoise': white_noise,
                       'Blurring': gaussian_noise,
@@ -79,7 +86,6 @@ def main(args):
     grid_param = {'padding': 2, 'normalize': False,
                   'pad_value': 1,
                   'nrow': 8}
-
 
     ## loading the VAE model
 
@@ -109,10 +115,9 @@ def main(args):
         transforms.ToTensor()
     ])
 
-    #dataset = datasets.MNIST('../DataSet/MNIST/', train=False,
-    #                          transform=transform)
-    dataset = datasets.QMNIST('../DataSet/QMNIST/', what='test', download=True,
-                                                       transform=transform)
+    dataset = datasets.MNIST(args.data_dir, train=False,
+                              transform=transform)
+
     test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
 
 
@@ -163,8 +168,6 @@ def main(args):
 
             best_accu = acc
             best_it = 0
-
-
 
             # put data here
             #results = {}

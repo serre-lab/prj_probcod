@@ -18,14 +18,18 @@ exp_name="${NOW}_QMNIST_EVAL_${type}"
 
 path="../prj_probcod_exps/$exp_name"
 
+
+DATA_DIR='../DataSet/MNIST/'
+
 rm -r $path
 
 CUDA_VISIBLE_DEVICES=$device python3 eval_classifier.py \
-                              --path $path\
-                              --batch_size $batch_size \
-                              --PathClassifier $PathClassifier \
-                              --config $config \
-                              --normalized_output $normalized_output\
-                              --save_in_db $save_in_db \
-                              --save_latent $save_latent
+                            --path $path\
+                            --batch_size $batch_size \
+                            --PathClassifier $PathClassifier \
+                            --config $config \
+                            --normalized_output $normalized_output\
+                            --save_in_db $save_in_db \
+                            --save_latent $save_latent
+                            --data_dir $DATA_DIR
 
