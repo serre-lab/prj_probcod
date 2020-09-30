@@ -7,15 +7,7 @@ from torch import nn
 from torch.nn import functional as F
 
 
-#def show(img, title=None, saving_path=None ):
-#    npimg = img.numpy()
-#    plt.imshow(np.transpose(npimg, (1, 2, 0)), interpolation='nearest')
-#    plt.axis('off')
-#    if title is not None:
-#        plt.title(title)
-#    if saving_path is not None:
-#        plt.savefig(saving_path)
-#    plt.show()
+
 
 
 class GaussianSmoothing(nn.Module):

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-device=7
+device=4
 type=CL
 batch_size=64
 epoch=40
@@ -11,11 +11,16 @@ exp_name="${NOW}_${type}"
 
 path="../prj_probcod_exps/$exp_name"
 
-rm -r $path
+DATA_DIR='../DataSet/MNIST/'
+
+rm -rf $path
+
+
 
 CUDA_VISIBLE_DEVICES=$device python3 train_classifier.py \
                               --path $path\
                               --batch-size $batch_size \
                               --epochs $epoch \
-                              --eval-freq 10
+                              --eval-freq 10 \
+                              --data_dir $DATA_DIR
 

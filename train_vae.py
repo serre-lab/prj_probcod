@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torchvision import datasets, transforms
-from network import VAE, iVAE, PCN, PHI, loss_function, loss_function_pc, enable_grad, disable_grad
+from network import VAE, iVAE, PCN, IAI, PHI, loss_function, loss_function_pc, enable_grad, disable_grad
 from torchvision.utils import make_grid, save_image
 import argparse
 
@@ -29,14 +29,14 @@ parser.add_argument('--decoder_type', type=str, default='bernoulli', help='type 
 # inference
 parser.add_argument('--nb_it', type=int, default=20, help='number of iteration of the iterative inference')
 parser.add_argument('--svi_lr', type=float, default = 1e-4, help='learning rate of the iterative inference')
-parser.add_argument('--svi_optimizer', type=str, default = 'ADAM', help='type of the inference optimizer')
+parser.add_argument('--svi_optimizer', type=str, default = 'Adam', help='type of the inference optimizer')
 parser.add_argument('--beta', type=float, default = 1, help='beta coefficient of the KL')
 
 # training
 parser.add_argument('--lr', type=float, default=1e-3, help='learning rate of the amortized inference')
 parser.add_argument('--batch_size', type=int, default=1024, help='training batch size')
 parser.add_argument('--nb_epoch', type=int, default=200, help='number of training epochs')
-parser.add_argument('--train_optimizer', type=str, default = 'ADAM', help='type of the learning optimizer')
+parser.add_argument('--train_optimizer', type=str, default = 'Adam', help='type of the learning optimizer')
 
 # other
 parser.add_argument('--cuda', type=bool, default=True, help='use GPUs')
@@ -48,11 +48,15 @@ parser.add_argument('--disp-freq', type=int, default=10, help='image display epo
 parser.add_argument('--ckpt-freq', type=int, default=0, help='checkpoint epoch interval')
 parser.add_argument('--eval-freq', type=int, default=20, help='evaluation epoch interval')
 parser.add_argument('--early-stop', type=int, default=3, help='early stopping iterations')
+parser.add_argument('--reduced_training_digits', type=int, nargs='+', default=None, help='reduce the training distribution to the selected digits')
 
 
 parser.add_argument('--path', type=str, default='', help='path to store the trained network')
 
 parser.add_argument('--path_db', type=str, default='db_TRAIN.csv', help='path to the training database')
+
+# data
+parser.add_argument('--data_dir', type=str, default='../DataSet/MNIST/', help='dataset path')
 
 args = parser.parse_args()
 
@@ -75,6 +79,9 @@ def evaluate(args, test_loader, model):
         loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none',
                                                      beta=args.beta, decoder_type=args.decoder_type)
         #_, _, _, _, loss_gen, reco_loss, KL_loss, _ = model.forward_eval(data, reduction='sum', nb_it=args.nb_it)
+
+    elif args.type == 'IAI':
+        _, _, loss_gen, reco_loss, KL_loss = model(data, nb_it=args.nb_it, reduction='none')
 
     elif args.type == 'VAE':
         _,_,_,_, loss_gen, reco_loss, KL_loss,_ = model.forward_eval(data, reduction='none')
@@ -102,6 +109,8 @@ def main(args):
 
     ## manual seed
     torch.manual_seed(args.seed)
+    #print(args.reduced_training_digits)
+    #stop
 
     ## data
     if args.decoder_type == 'bernoulli':
@@ -110,8 +119,8 @@ def main(args):
         transform = transforms.Compose([transforms.ToTensor(),
                                         transforms.Normalize((0.1307,), (0.3081,))])
 
-    dataset1 = datasets.MNIST('../DataSet/MNIST/', train=True, download=True, transform=transform)
-    dataset2 = datasets.MNIST('../DataSet/MNIST/', train=False, download=True, transform=transform)
+    dataset1 = datasets.MNIST(args.data_dir, train=True, download=True, transform=transform)
+    dataset2 = datasets.MNIST(args.data_dir, train=False, download=True, transform=transform)
 
     train_loader = torch.utils.data.DataLoader(dataset1, 
                                                 batch_size=args.batch_size,
@@ -126,13 +135,20 @@ def main(args):
                                                 pin_memory=True, 
                                                 num_workers=8, 
                                                 shuffle=False)
-    
+
     ## model
     if args.type == 'IVAE':
         vae_model = iVAE(x_dim = 28**2, lr_svi=args.svi_lr,h_dim1=args.arch[0], h_dim2=args.arch[1],
                          z_dim=args.z_dim, activation= args.activation_function, cuda=args.cuda,
                          svi_optimizer= args.svi_optimizer, beta=args.beta, decoder_type=args.decoder_type
                          )
+
+    elif args.type == 'IAI':
+        vae_model = IAI(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1],
+                         z_dim=args.z_dim, activation= args.activation_function,
+                         beta=args.beta, decoder_type=args.decoder_type
+                         )
+
     elif args.type == 'VAE':
         vae_model = VAE(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1], z_dim=args.z_dim,
                         activation=args.activation_function, layer=args.layer, beta=args.beta,
@@ -143,7 +159,7 @@ def main(args):
                          z_dim=args.z_dim, activation= args.activation_function, cuda=args.cuda,
                          svi_optimizer= args.svi_optimizer, beta=args.beta, decoder_type=args.decoder_type
                          )
-                         
+
 
     if args.cuda:
         vae_model = vae_model.cuda()
@@ -151,12 +167,15 @@ def main(args):
 
     # param_svi = list(phi.parameters())
 
-    if args.train_optimizer == 'ADAM':
-        optimizer = torch.optim.Adam(vae_model.parameters(), lr= args.lr)
-
+    if args.type == 'IAI':
+        optimizers = {}
+        optimizers['enc'] = getattr(torch.optim, args.train_optimizer)(vae_model.param_enc, lr= args.lr)# / args.nb_it)
+        optimizers['dec'] = getattr(torch.optim, args.train_optimizer)(vae_model.param_dec, lr= args.lr)
+    else:
+        optimizer = getattr(torch.optim, args.train_optimizer)(vae_model.parameters(), lr= args.lr)
 
     all_param = vae_model.param_enc + vae_model.param_dec # + param_svi
-    disable_grad(all_param)
+    
     # update_rate = 50
     # scheduler = StepLR(optimizer, step_size=update_rate, gamma=0.5)
     
@@ -186,6 +205,7 @@ def main(args):
             
             ## Initialise the posterior output
             if args.type == 'IVAE':
+                disable_grad(all_param)
                 phi = vae_model(data, nb_it=args.nb_it)
 
                 ## Amortized learning of the likelihood parameter
@@ -203,13 +223,19 @@ def main(args):
                 optimizer.step()
                 disable_grad(vae_model.param_enc)
 
+            elif args.type == 'IAI':
+                reco, z, loss_gen, reco_loss, KL_loss = vae_model(data, nb_it=args.nb_it, optimizers=optimizers)
+                loss_gen.backward()
+                optimizers['enc'].step()
+                optimizers['dec'].step()
+
             elif args.type == 'VAE':
-                enable_grad(all_param)
+                # enable_grad(all_param)
                 optimizer.zero_grad()
                 reco, z, mu, log_var, loss_gen, reco_loss, KL_loss,_ = vae_model.forward_eval(data)
                 loss_gen.backward()
                 optimizer.step()
-                disable_grad(all_param)
+                # disable_grad(all_param)
 
             elif args.type == 'PCN':
                 
@@ -284,6 +310,7 @@ def main(args):
                 'config': vars(args),
                 'results': results,
             }
+
             if args.path != '':
                 torch.save(save_dict,
                             os.path.join(args.path, 'model_results.pth')
@@ -295,7 +322,8 @@ def main(args):
                     break
                 # early_stopping_count
 
-    df_results = pd.DataFrame()
+
+    df_results = pd.read_csv(args.path_db, index_col=0)
 
     rows = {
         'model_path': args.path,
@@ -319,7 +347,7 @@ def main(args):
     }
 
     df_results = df_results.append(rows, ignore_index=True)
-    df_results.to_csv(os.path.join(args.path, args.path_db))
+    df_results.to_csv(args.path_db)
 
 
 if __name__ == '__main__':

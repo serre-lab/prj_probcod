@@ -38,6 +38,9 @@ parser.add_argument('--path', type=str, default='', help='path to store the trai
  #                   help='For Saving the current Model')
 #parser.add_argument('--device', type=str, default='cuda:7', help='gpu name')
 
+# data
+parser.add_argument('--data_dir', type=str, default='../DataSet/MNIST/', help='dataset path')
+
 args = parser.parse_args()
 
 
@@ -113,9 +116,9 @@ def main(args):
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))
         ])
-    dataset1 = datasets.MNIST('../../DataSet/MNIST/', train=True, download=False,
+    dataset1 = datasets.MNIST(args.data_dir, train=True, download=False,
                        transform=transform)
-    dataset2 = datasets.MNIST('../../DataSet/MNIST/', train=False,
+    dataset2 = datasets.MNIST(args.data_dir, train=False,
                        transform=transform)
     train_loader = torch.utils.data.DataLoader(dataset1,**kwargs)
     test_loader = torch.utils.data.DataLoader(dataset2, **kwargs)
