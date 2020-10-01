@@ -53,6 +53,7 @@ parser.add_argument('--save_latent', type=int, default=0, help='1 to save the la
 parser.add_argument('--denoising_baseline', type=int, default=0, help='Compute the ELBO for a denoising framework')
 parser.add_argument('--per_sample_monitoring', type=int, default=0, help='Output all the statistics per sample')
 parser.add_argument('--nb_class', type=int, default=10, help='number of class of the classifier')
+parser.add_argument('--save_data_reconstruction', type=int, default=0, help='save data reconstruction')
 
 # data
 parser.add_argument('--data_dir', type=str, default='../DataSet/MNIST/', help='dataset path')
@@ -76,6 +77,7 @@ def main(args):
 
     def white_noise(input, std):
         input_filtered = input + std * torch.randn_like(input)
+        #input_filtered = normalize_data(input_filtered)
         return input_filtered
 
     def gaussian_noise(input, std=None, idx_param=None):
@@ -99,8 +101,9 @@ def main(args):
 
     ## setting the grid param
     grid_param = {'padding': 2, 'normalize': True,
+                  'scale_each':True,
                   'pad_value': 1,
-                  'nrow': 8}
+                  'nrow': 50}
 
 
     ## loading the VAE model
@@ -176,6 +179,7 @@ def main(args):
     ## load the testing database
     kwargs = {'batch_size': args.batch_size,
               'num_workers': 8,
+              'drop_last': False,
               'pin_memory': True,
               'shuffle': False
             }
@@ -192,7 +196,6 @@ def main(args):
 
 
     dataset = datasets.MNIST(args.data_dir, train=False,
-
                               transform=transform)
     test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
     
@@ -288,6 +291,38 @@ def main(args):
                     softmax_reshape = output.view(reco_size[0], reco_size[1], -1)
                     label_to_save = label
                 """
+
+                if args.disp and batch_idx==0:
+                    data_normalize = normalize_data(data)
+                    if args.save_data_reconstruction == 1:
+                        torch.save(data_normalize.tolist(), os.path.join(args.path, 'image_clear_{}_{}.pkl'.format(noise_type, param_noise)))
+                    data_blurred_normalized = normalize_data(data_blurred)
+                    if args.save_data_reconstruction == 1:
+                        torch.save(data_blurred_normalized.tolist(), os.path.join(args.path, 'image_blurred_{}_{}.pkl'.format(noise_type, param_noise)))
+                    to_plot = torch.cat([data_normalize[0:50, :, :, :], data_blurred_normalized[0:50, :, :, :]], 0)
+
+                    if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE', 'PCN', 'IAI']):
+                        reco = reco.view(reco_size[0], reco_size[1], reco.size(-3), reco.size(-2), reco.size(-1))
+                        reco = reco.transpose(0, 1)
+                        # print(reco.size())
+                        if args.save_data_reconstruction == 1:
+                            reco_to_save = reco.reshape(-1, reco.size(-3), reco.size(-2), reco.size(-1))
+                            reco_normalize_to_save = normalize_data(reco_to_save, start_dim=1)
+                            torch.save(reco_normalize_to_save.tolist(),
+                                       os.path.join(args.path, 'image_reco_{}_{}.pkl'.format(noise_type, param_noise)))
+
+                        reco = reco[:, 0:50, :, :, :].reshape(-1, reco.size(-3), reco.size(-2), reco.size(-1))
+                        # print('reco', reco.size())
+                        reco_normalize = normalize_data(reco, start_dim=1)
+                        to_plot = torch.cat([to_plot, reco_normalize], 0)
+                        # to_plot = torch.cat([to_plot,reco],0)
+
+                    else:
+                        to_plot = torch.cat([to_plot, reco[0:50, :, :, :]], 0)
+                    img_to_plot = make_grid(to_plot, **grid_param)
+                    save_image(img_to_plot,
+                               fp=os.path.join(args.path, 'image_{}_{}.png'.format(noise_type, param_noise)))
+
             acc = 100.*(correct/len(dataset))
 
             #print('Accuracy : {0}'.format(acc))
@@ -323,20 +358,6 @@ def main(args):
                 dico_result['labels'] = label_to_save.tolist()
             torch.save(dico_result, filename)
 
-            if args.disp:
-                to_plot = torch.cat([data[0:8, :, :, :], data_blurred[0:8, :, :, :]],0)
-                if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE','PCN', 'IAI']):
-                    reco = reco.view(reco_size[0],reco_size[1],reco.size(-3),reco.size(-2), reco.size(-1))
-                    reco = reco.transpose(0,1)
-                    reco = reco[:,0:8,:,:,:].reshape(-1,reco.size(-3),reco.size(-2), reco.size(-1))
-                    to_plot = torch.cat([to_plot,reco],0)
-
-                else :
-                    to_plot = torch.cat([to_plot,reco[0:8,:,:,:]],0)
-                img_to_plot = make_grid(to_plot, **grid_param)
-                save_image(img_to_plot, fp=os.path.join(args.path, 'image_{}_{}.png'.format(noise_type, param_noise)))
-
-            
             if not os.path.isfile(args.path_db):
                 df_results = pd.DataFrame()
             else:
@@ -353,7 +374,6 @@ def main(args):
                 'svi_optimizer_training': args_vae["svi_optimizer"],
                 'svi_lr_training': args_vae["svi_lr"],
                 'svi_nb_it_training': args_vae["nb_it"],
-
 
                 'svi_optimizer_eval': args.svi_optimizer_eval,
                 'svi_lr_eval': vae_model.lr_svi,

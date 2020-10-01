@@ -94,16 +94,14 @@ class GaussianSmoothing(nn.Module):
         return input_filtered
 
 
-def normalize_data(data):
-    data_fl = torch.flatten(data, start_dim=1)
+def normalize_data(data, start_dim=1):
 
+    data_fl = torch.flatten(data, start_dim=start_dim)
     out_min, _ = data_fl.min(dim=1)
-    # print(out_min.size())
     data_fl = data_fl - out_min[:, None]
-
     out_max, _ = data_fl.max(dim=1)
-    out_max = out_max[:, None, None, None]  # .unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-    return data / out_max
+    data_fl = data_fl/out_max[:, None]
+    return data_fl.view_as(data)
 
 #def normalize_data(data):
 #    data_fl = torch.flatten(data, start_dim=1)
