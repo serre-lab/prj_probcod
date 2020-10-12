@@ -5,11 +5,11 @@ svi_lr_eval=1e-3
 nb_it_eval=500
 freq_extra=25
 
-save_in_db=1
+save_in_db=0
 
 save_latent=0
 device=3
-save_data_reconstruction=0
+save_data_reconstruction=1
 # devices=(4 5 6 7 4 5) #
 
 batch_size=256
@@ -18,16 +18,9 @@ denoising_baseline=0
 per_sample_monitoring=0
 
 declare -a PathVAE_list=(
-"../prj_probcod_exps/2020-09-22_06-07-24_IVAE_svi_lr=1e-2_lr=1e-3_beta=1_nb_it=20_[512,256,15]_af=tanh_layer=fc_decoder=gaussian"
-#"../prj_probcod_exps/2020-09-25_02-37-52_IVAE_svi_lr=1e-2_lr=1e-3_beta=1_nb_it=100_[512,256,15]_af=tanh_layer=fc_decoder=gaussian"
-#"../prj_probcod_exps/2020-09-25_02-40-17_VAE_svi_lr=1e-2_lr=1e-3_beta=1_nb_it=100_[512,256,15]_af=tanh_layer=fc_decoder=gaussian"
 #"../prj_probcod_exps/2020-09-25_02-31-15_PCN_svi_lr=1e-2_lr=1e-3_beta=1_nb_it=100_[512,256,15]_af=tanh_layer=fc_decoder=gaussian"
-#"../prj_probcod_exps/2020-09-25_07-17-33_PCN_svi_lr=1e-2_lr=1e-3_beta=0_nb_it=100_[512,256,15]_af=tanh_layer=fc_decoder=gaussian"
-#"../prj_probcod_exps/2020-09-25_07-17-33_PCN_svi_lr=1e-2_lr=1e-3_beta=0.1_nb_it=100_[512,256,15]_af=tanh_layer=fc_decoder=gaussian"
-#"../prj_probcod_exps/2020-09-25_07-18-57_PCN_svi_lr=1e-2_lr=1e-3_beta=0.5_nb_it=100_[512,256,15]_af=tanh_layer=fc_decoder=gaussian"
-#"../prj_probcod_exps/2020-09-25_07-18-57_PCN_svi_lr=1e-2_lr=1e-3_beta=1_nb_it=100_[512,256,15]_af=tanh_layer=fc_decoder=gaussian"
-#"../prj_probcod_exps/2020-09-25_08-37-46_PCN_svi_lr=1e-2_lr=1e-3_beta=5_nb_it=100_[512,256,15]_af=tanh_layer=fc_decoder=gaussian"
-#"../prj_probcod_exps/2020-09-25_08-37-46_PCN_svi_lr=1e-2_lr=1e-3_beta=10_nb_it=100_[512,256,15]_af=tanh_layer=fc_decoder=gaussian"
+#"../prj_probcod_exps/2020-09-22_06-07-24_IVAE_svi_lr=1e-2_lr=1e-3_beta=1_nb_it=20_[512,256,15]_af=tanh_layer=fc_decoder=gaussian"
+"../prj_probcod_exps/2020-09-22_09-29-18_VAE_svi_lr=1e-2_lr=1e-3_beta=1_nb_it=20_[512,256,15]_af=tanh_layer=fc_decoder=gaussian"
 )
 
 DATA_DIR='../DataSet/MNIST/'
@@ -42,8 +35,8 @@ for PathVAE in ${PathVAE_list[@]}; do
 #device=${devices[$idx]}
 #PathVAE=${PathVAE_list[$idx]}
 
-NOW=$(date +"%Y-%m-%d_%H-%M-%S")
-#NOW="SAVE_DATA_IMAGE"
+#NOW=$(date +"%Y-%m-%d_%H-%M-%S")
+NOW="SAVE_DATA_IMAGE"
 exp_name="${NOW}_EVAL_lrsvi=${svi_lr_eval}_nb_it=${nb_it_eval}"
 path="../prj_probcod_exps/$exp_name"
 CUDA_VISIBLE_DEVICES=$device \
