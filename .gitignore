@@ -8,3 +8,4 @@ test_db.py
 .vscode/
 __pycache__/
 logs/
+notebook/MyNotebook/
