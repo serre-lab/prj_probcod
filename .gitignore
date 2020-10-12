@@ -3,7 +3,6 @@ config_eval_V2.json
 config_eval_ori.json
 config_eval_the_first.json
 *.csv
-test_db.py
 
 *.ipynb_checkpoints/
 .vscode/
