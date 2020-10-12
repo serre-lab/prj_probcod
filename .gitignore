@@ -5,6 +5,7 @@ config_eval_the_first.json
 *.csv
 test_db.py
 
+*.ipynb_checkpoints/
 .vscode/
 __pycache__/
 logs/
