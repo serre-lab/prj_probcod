@@ -221,7 +221,7 @@ def main(args):
 
             if 'lr_svi' in dico_config[noise_type].keys():
                 vae_model.lr_svi = dico_config[noise_type]['lr_svi']
-
+                print(vae_model.lr_svi)
             if args.verbose:
                 print('Evaluating on {} noise with parameter {}'.format(noise_type, param_noise))
             correct = 0
@@ -266,7 +266,6 @@ def main(args):
                     correct_per_sample = pred.eq(label_it.view_as(pred)).view(reco_size[0], reco_size[1]) + 0
                 else :
                     correct += pred.eq(label.view_as(pred)).sum().float()
-
 
                 if args.save_latent:
                     mu_l_p_to_save = torch.cat([mu_l_p_to_save, mu_l_p.detach().cpu()],0)
@@ -318,7 +317,14 @@ def main(args):
                         # to_plot = torch.cat([to_plot,reco],0)
 
                     else:
-                        to_plot = torch.cat([to_plot, reco[0:50, :, :, :]], 0)
+                        if args.save_data_reconstruction == 1:
+                            reco_to_save = reco
+                            reco_normalize_to_save = normalize_data(reco_to_save, start_dim=1)
+                            torch.save(reco_normalize_to_save.tolist(),
+                                       os.path.join(args.path, 'image_reco_{}_{}.pkl'.format(noise_type, param_noise)))
+
+                        else:
+                            to_plot = torch.cat([to_plot, reco[0:50, :, :, :]], 0)
                     img_to_plot = make_grid(to_plot, **grid_param)
                     save_image(img_to_plot,
                                fp=os.path.join(args.path, 'image_{}_{}.png'.format(noise_type, param_noise)))
