@@ -2,6 +2,8 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 
+import numpy as np
+
 class Classifier(nn.Module):
     def __init__(self):
         super(Classifier, self).__init__()
@@ -44,7 +46,7 @@ class UnFlatten(nn.Module):
         return input.view(input.size(0), size[0], size[1])
 
 class VAE(nn.Module):
-    def __init__(self, x_dim, z_dim, h_dim1=512, h_dim2=256, activation='tanh', layer='fc', beta=1, decoder_type='Bernoulli'):
+    def __init__(self, x_dim, z_dim, h_dim1=512, h_dim2=256, activation='tanh', layer='fc', beta=1, decoder_type='Bernoulli', *args, **kwargs):
         super(VAE, self).__init__()
         self.layer = layer
         self.beta = beta
@@ -164,7 +166,7 @@ class VAE(nn.Module):
 
 class iVAE(nn.Module):
     def __init__(self, lr_svi, x_dim, z_dim, h_dim1=512, h_dim2=256, cuda=True,
-                 activation='tanh', svi_optimizer='Adam', beta=1, decoder_type='bernoulli'):
+                 activation='tanh', svi_optimizer='Adam', beta=1, decoder_type='bernoulli', *args, **kwargs):
         super(iVAE, self).__init__()
 
         self.decoder_type = decoder_type
@@ -314,11 +316,164 @@ class iVAE(nn.Module):
         else :
             loss_gen.backward()
         return reco, z, loss_gen, reco_loss, KL_loss
+
+
+
+class SVI(nn.Module):
+    def __init__(self, lr_svi, x_dim, z_dim, h_dim1=512, h_dim2=256, cuda=True,
+                 activation='tanh', svi_optimizer='Adam', beta=1, decoder_type='bernoulli', var_init=0, *args, **kwargs):
+        super(SVI, self).__init__()
+
+        self.decoder_type = decoder_type
+        self.beta = beta
+        self.to_cuda = cuda
+        self.lr_svi=lr_svi
+        self.optimizer = getattr(torch.optim, svi_optimizer)
+
+        # encoder part
+        # self.ff1 = nn.Linear(x_dim, h_dim1)
+        # self.ff2 = nn.Linear(h_dim1, h_dim2)
+        # self.ff3_mu = nn.Linear(h_dim2, z_dim)
+        # self.ff3_var = nn.Linear(h_dim2, z_dim)
+        # decoder part
+        self.fb4 = nn.Linear(z_dim, h_dim2)
+        self.fb5 = nn.Linear(h_dim2, h_dim1)
+        self.fb6 = nn.Linear(h_dim1, x_dim)
+
+        if activation == 'tanh':
+            self.activ_func = torch.nn.Tanh()
+        elif activation == 'relu':
+            self.activ_func = torch.nn.ReLU()
+
+        # self.enc = nn.Sequential(self.ff1, self.activ_func, self.ff2, self.activ_func)
+        self.dec = nn.Sequential(self.fb4, self.activ_func, self.fb5, self.activ_func)
+
+        self.param_enc=[]
+        self.param_dec = [self.fb4.weight, self.fb4.bias, self.fb5.weight, self.fb5.bias,
+                          self.fb6.weight, self.fb6.bias]
+
+        self.var_init = var_init
+        self.z_dim = z_dim
+
+
+    def sampling(self, mu, log_var):
+        std = torch.exp(0.5 * log_var)
+        eps = torch.randn_like(std)
+        return eps.mul(std).add(mu)
+
+    def decoder(self, z):
+        #h = torch.tanh(self.fb4(z))
+        #h = torch.tanh(self.fb5(h))
+        h = self.dec(z)
+
+        if self.decoder_type == 'bernoulli':
+            to_return = torch.sigmoid(self.fb6(h))
+        elif self.decoder_type == 'gaussian':
+            to_return = self.fb6(h)
+        return to_return
+
+    def forward(self, x, nb_it):
+        phi = PHI()
+        if self.to_cuda:
+            phi = phi.cuda()
+        param_svi = list(phi.parameters())
+        optimizer_SVI = self.optimizer(phi.parameters(), lr=self.lr_svi)
+        #optimizer_SVI = torch.optim.Adam
+
+        mu_p, log_vae_p = torch.zeros([x.shape[0], self.z_dim]), (torch.zeros([x.shape[0], self.z_dim])+np.log(self.var_init))
+
+        if self.to_cuda:
+            mu_p, log_vae_p = mu_p.cuda(), log_vae_p.cuda()
+
+        phi.mu_p.data, phi.log_var_p.data = mu_p, log_vae_p
+
+        ## Iterative refinement of the posterior
+        enable_grad(param_svi)
+        for idx_it in range(nb_it):
+            optimizer_SVI.zero_grad()
+            _, _, loss_gen, _, _ = self.step(x, phi)
+            optimizer_SVI.step()
+        disable_grad(param_svi)
+
+        return phi
+
+    def forward_eval(self, x, nb_it, freq_extra=0, reduction='sum', x_clear=None):
+        phi = PHI()
+        if self.to_cuda:
+            phi = phi.cuda()
+        param_svi = list(phi.parameters())
+        optimizer_SVI = self.optimizer(phi.parameters(), lr=self.lr_svi)
+        
+        mu_p, log_vae_p = torch.zeros([x.shape[0], self.z_dim]), torch.zeros([x.shape[0], self.z_dim])#+np.log(0.1)
+        if self.to_cuda:
+            mu_p, log_vae_p = mu_p.cuda(), log_vae_p.cuda()
+
+        phi.mu_p.data, phi.log_var_p.data = mu_p, log_vae_p
+        if freq_extra != 0:
+            reco_l, _, _, z_l, loss_gen_l, reco_loss_l, KL_loss_l, nb_it_l = [],[],[],[],[],[],[],[]
+            mu_l = torch.zeros(x.size(0),(nb_it//freq_extra)+1,self.z_dim).cuda()
+            log_var_l = torch.zeros(x.size(0),(nb_it//freq_extra)+1,self.z_dim).cuda()
+        ## Iterative refinement of the posterior
+        enable_grad(param_svi)
+        torch.set_printoptions(precision=10)
+        idx_freq = 0
+        for idx_it in range(nb_it):
+
+            optimizer_SVI.zero_grad()
+            reco, z, loss_gen, reco_loss, KL_loss = self.step(x, phi, reduction=reduction, x_clear=x_clear)
+
+            optimizer_SVI.step()
+
+            if (freq_extra!=0) and ((idx_it%freq_extra== 0) or idx_it==nb_it-1):
+                #print(phi.mu_p.data[4,:])
+                reco_l.append(reco.data)
+                z_l.append(z.data)
+                mu_l[:,idx_freq,:] = phi.mu_p.data
+                log_var_l[:, idx_freq, :] = phi.log_var_p.data
+                loss_gen_l.append(loss_gen.data)
+                reco_loss_l.append(reco_loss.data)
+                KL_loss_l.append(KL_loss.data)
+                nb_it_l.append(idx_it)
+                idx_freq+=1
+
+        disable_grad(param_svi)
+
+        if freq_extra != 0:
+            reco_l = torch.stack(reco_l, 1)
+            z_l = torch.stack(z_l, 1)
+            loss_gen_l = torch.stack(loss_gen_l, 0)
+            reco_loss_l = torch.stack(reco_loss_l, 0)
+            KL_loss_l = torch.stack(KL_loss_l, 0)
+            nb_it_l = torch.tensor(nb_it_l)
+            return reco_l, z_l, mu_l, log_var_l, loss_gen_l, reco_loss_l, KL_loss_l, nb_it_l
+        
+        else:
+            return reco, z, phi.mu_p.data, phi.log_var_p.data, loss_gen, reco_loss, KL_loss, 0
+
+    def step(self, x, phi=None, mu=None, log_var=None, reduction='sum', x_clear=None):
+        
+        if phi is not None:
+            z = self.sampling(phi.mu_p, phi.log_var_p)
+            reco = self.decoder(z)
+            loss_gen, reco_loss, KL_loss = loss_function(reco, x, phi.mu_p, phi.log_var_p,
+                                                         reduction=reduction, beta=self.beta,
+                                                         decoder_type=self.decoder_type, x_clear=x_clear)
+        else:
+            z = self.sampling(mu, log_var)
+            reco = self.decoder(z)
+            loss_gen, reco_loss, KL_loss = loss_function(reco, x, mu, log_var,
+                                                         reduction=reduction, beta=self.beta,
+                                                         decoder_type= self.decoder_type, x_clear=x_clear)
+        if reduction is None:
+            loss_gen.backward(torch.ones_like(loss_gen))
+        else :
+            loss_gen.backward()
+        return reco, z, loss_gen, reco_loss, KL_loss
     
 
 class IAI(nn.Module):
     def __init__(self, x_dim, z_dim, h_dim1=512, h_dim2=256,
-                 activation='tanh', highway=True, beta=1, decoder_type='bernoulli'):
+                 activation='tanh', highway=True, beta=1, decoder_type='bernoulli', *args, **kwargs):
         super(IAI, self).__init__()
 
         self.decoder_type = decoder_type
@@ -518,7 +673,7 @@ class PHI(nn.Module):
 
 class PCN(nn.Module):
     def __init__(self, lr_svi, x_dim, z_dim, h_dim1=512, h_dim2=256, cuda=True,
-                 activation='tanh', svi_optimizer='Adam', beta=1, decoder_type='bernoulli'):
+                 activation='tanh', svi_optimizer='Adam', beta=1, decoder_type='bernoulli', *args, **kwargs):
         super(PCN, self).__init__()
 
         self.decoder_type = decoder_type

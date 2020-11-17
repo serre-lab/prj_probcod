@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torchvision import datasets, transforms
-from network import VAE, iVAE, PCN, IAI, PHI, loss_function, loss_function_pc, enable_grad, disable_grad
+from network import VAE, iVAE, PCN, IAI, SVI, PHI, loss_function, loss_function_pc, enable_grad, disable_grad
 from torchvision.utils import make_grid, save_image
 import argparse
 
@@ -25,6 +25,8 @@ parser.add_argument('--z_dim', type=int, default=5, help='architecture of the en
 parser.add_argument('--activation_function', type=str, default='tanh', help='path to store the trained network')
 parser.add_argument('--layer', type=str, default='fc', help='type of layer in the encoder/decoder')
 parser.add_argument('--decoder_type', type=str, default='bernoulli', help='type of the decoder')
+# specific for SVI
+parser.add_argument('--var_init', type=float, default=1.0, help='show everything')
 
 # inference
 parser.add_argument('--nb_it', type=int, default=20, help='number of iteration of the iterative inference')
@@ -50,10 +52,9 @@ parser.add_argument('--eval-freq', type=int, default=20, help='evaluation epoch 
 parser.add_argument('--early-stop', type=int, default=3, help='early stopping iterations')
 parser.add_argument('--reduced_training_digits', type=int, nargs='+', default=None, help='reduce the training distribution to the selected digits')
 
-
+parser.add_argument('--exp_name', type=str, default='test', help='path to the training database')
 parser.add_argument('--path', type=str, default='', help='path to store the trained network')
-
-parser.add_argument('--path_db', type=str, default='db_TRAIN.csv', help='path to the training database')
+parser.add_argument('--path_db', type=str, default='../probcod_dbs/', help='path to the training database')
 
 # data
 parser.add_argument('--data_dir', type=str, default='../DataSet/MNIST/', help='dataset path')
@@ -71,14 +72,12 @@ def evaluate(args, test_loader, model):
     if args.decoder_type == 'bernoulli':
         data = (data > 0.001).float()
 
-
     if args.type == 'IVAE':
         phi = model(data, nb_it=args.nb_it)
         z = model.sampling(phi.mu_p, phi.log_var_p)
         reco = model.decoder(z)
         loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none',
                                                      beta=args.beta, decoder_type=args.decoder_type)
-        #_, _, _, _, loss_gen, reco_loss, KL_loss, _ = model.forward_eval(data, reduction='sum', nb_it=args.nb_it)
 
     elif args.type == 'IAI':
         _, _, loss_gen, reco_loss, KL_loss = model(data, nb_it=args.nb_it, reduction='none')
@@ -90,6 +89,12 @@ def evaluate(args, test_loader, model):
         phi = model(data, nb_it=args.nb_it)
         reco = model.decoder(phi.mu_p)
         loss_gen, reco_loss, KL_loss = loss_function_pc(reco, data, phi.mu_p, reduction='none',
+                                                     beta=args.beta, decoder_type=args.decoder_type)
+
+    elif args.type == 'SVI':
+        phi = model(data, nb_it=args.nb_it)
+        reco = model.decoder(phi.mu_p)
+        loss_gen, reco_loss, KL_loss = loss_function(reco, data, phi.mu_p, phi.log_var_p, reduction='none',
                                                      beta=args.beta, decoder_type=args.decoder_type)
 
     val_reco_loss += reco_loss.data.tolist()
@@ -142,6 +147,12 @@ def main(args):
                          z_dim=args.z_dim, activation= args.activation_function, cuda=args.cuda,
                          svi_optimizer= args.svi_optimizer, beta=args.beta, decoder_type=args.decoder_type
                          )
+    
+    if args.type == 'SVI':
+        vae_model = SVI(x_dim = 28**2, lr_svi=args.svi_lr,h_dim1=args.arch[0], h_dim2=args.arch[1],
+                         z_dim=args.z_dim, activation= args.activation_function, cuda=args.cuda,
+                         svi_optimizer= args.svi_optimizer, beta=args.beta, decoder_type=args.decoder_type
+                         )
 
     elif args.type == 'IAI':
         vae_model = IAI(x_dim = 28**2, h_dim1=args.arch[0], h_dim2=args.arch[1],
@@ -159,7 +170,6 @@ def main(args):
                          z_dim=args.z_dim, activation= args.activation_function, cuda=args.cuda,
                          svi_optimizer= args.svi_optimizer, beta=args.beta, decoder_type=args.decoder_type
                          )
-
 
     if args.cuda:
         vae_model = vae_model.cuda()
@@ -248,6 +258,16 @@ def main(args):
                 optimizer.step()
                 disable_grad(vae_model.param_dec)
 
+            elif args.type == 'SVI':
+                
+                phi = vae_model(data, nb_it=args.nb_it)
+                mu, log_var = phi.mu_p, phi.log_var_p
+                ## Amortized learning of the posterior parameter
+                enable_grad(vae_model.param_dec)
+                optimizer.zero_grad()
+                reco, _, loss_gen, reco_loss, KL_loss = vae_model.step(data, mu=mu, log_var=log_var)
+                optimizer.step()
+                disable_grad(vae_model.param_dec)
 
             train_reco_loss += reco_loss
             train_KL_loss += KL_loss
@@ -322,10 +342,9 @@ def main(args):
                     break
                 # early_stopping_count
 
+    df_results = pd.DataFrame()
 
-    df_results = pd.read_csv(args.path_db, index_col=0)
-
-    rows = {
+    row = {
         'model_path': args.path,
         'model_type': args.type,
         'architecture': args.arch,
@@ -346,8 +365,8 @@ def main(args):
         'best_epoch': best_epoch
     }
 
-    df_results = df_results.append(rows, ignore_index=True)
-    df_results.to_csv(args.path_db)
+    df_results = df_results.append(row, ignore_index=True)
+    df_results.to_csv(os.path.join(args.path_db, args.exp_name + '_db.csv'))
 
 
 if __name__ == '__main__':

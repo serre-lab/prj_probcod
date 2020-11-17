@@ -78,3 +78,24 @@ usage: train_vae.py [-h] [--type TYPE] [--arch ARCH [ARCH ...]]
                     [--reduced_training_digits REDUCED_TRAINING_DIGITS [REDUCED_TRAINING_DIGITS ...]]
                     [--path PATH] [--path_db PATH_DB] [--data_dir DATA_DIR]
 train_vae.py: error: argument --beta: expected one argument
+{'type': 'SVI', 'arch': [512, 256], 'z_dim': 15, 'activation_function': 'tanh', 'layer': 'fc', 'decoder_type': 'gaussian', 'nb_it': 100, 'svi_lr': 0.01, 'svi_optimizer': 'Adam', 'beta': 0.0, 'lr': 0.001, 'batch_size': 1024, 'nb_epoch': 200, 'train_optimizer': 'Adam', 'cuda': True, 'seed': 1, 'verbose': 1, 'print_freq': 1, 'disp_freq': 10, 'ckpt_freq': 0, 'eval_freq': 20, 'early_stop': 3, 'reduced_training_digits': None, 'path': '../prj_probcod_exps/2020-11-17_06-18-41_SVI_svi_lr=1e-2_lr=1e-3_beta=0_nb_it=100_[512,256,15]_af=tanh_layer=fc_decoder=gaussian', 'path_db': 'db_TRAIN.csv', 'data_dir': '../DataSet/MNIST/'}
+Traceback (most recent call last):
+  File "train_vae.py", line 382, in <module>
+    main(args)
+  File "train_vae.py", line 210, in main
+    for batch_idx, (data, label) in enumerate(train_loader):
+  File "/home/azerroug/anaconda3/envs/py36/lib/python3.6/site-packages/torch/utils/data/dataloader.py", line 291, in __iter__
+    return _MultiProcessingDataLoaderIter(self)
+  File "/home/azerroug/anaconda3/envs/py36/lib/python3.6/site-packages/torch/utils/data/dataloader.py", line 737, in __init__
+    w.start()
+  File "/home/azerroug/anaconda3/envs/py36/lib/python3.6/multiprocessing/process.py", line 105, in start
+    self._popen = self._Popen(self)
+  File "/home/azerroug/anaconda3/envs/py36/lib/python3.6/multiprocessing/context.py", line 223, in _Popen
+    return _default_context.get_context().Process._Popen(process_obj)
+  File "/home/azerroug/anaconda3/envs/py36/lib/python3.6/multiprocessing/context.py", line 277, in _Popen
+    return Popen(process_obj)
+  File "/home/azerroug/anaconda3/envs/py36/lib/python3.6/multiprocessing/popen_fork.py", line 19, in __init__
+    self._launch(process_obj)
+  File "/home/azerroug/anaconda3/envs/py36/lib/python3.6/multiprocessing/popen_fork.py", line 66, in _launch
+    self.pid = os.fork()
+KeyboardInterrupt
