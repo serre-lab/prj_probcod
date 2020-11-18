@@ -8,6 +8,7 @@ from torch.optim.lr_scheduler import StepLR
 from network import Classifier
 import os
 
+import tools
 
 
 
@@ -32,6 +33,9 @@ parser.add_argument('--dry-run', action='store_true', default=False,
                     help='quickly check a single pass')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
+
+parser.add_argument('--zca_matrix', type=str, default='/cifs/data/tserre_lrs/projects/prj_predcoding/mnist_zca_matrix_2.npy', help='path to store the trained network')
+
 parser.add_argument('--path', type=str, default='', help='path to store the trained network')
 
 #parser.add_argument('--save-model', action='store_true', default=False,
@@ -114,8 +118,10 @@ def main(args):
 
     transform=transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,))
+        transforms.Normalize((0.1307,), (0.3081,)),
+        # tools.WhitenMNIST(args.zca_matrix)
         ])
+
     dataset1 = datasets.MNIST(args.data_dir, train=True, download=False,
                        transform=transform)
     dataset2 = datasets.MNIST(args.data_dir, train=False,

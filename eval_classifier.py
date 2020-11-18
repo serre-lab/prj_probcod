@@ -15,7 +15,6 @@ from tools import GaussianSmoothing
 
 import time
 
-
 import argparse
 
 
@@ -43,6 +42,9 @@ parser.add_argument('--path_db', type=str, default='db_EVAL.csv', help='path to 
 parser.add_argument('--nb_class', type=int, default=10, help='number of class of the classifier')
 parser.add_argument('--save_in_db', type=int, default=1, help='option to save the results in database')
 parser.add_argument('--save_latent', type=int, default=0, help='option to save the statistics per sample')
+
+parser.add_argument('--zca_whiten', type=int, default=0, help='option to save the statistics per sample')
+parser.add_argument('--zca_matrix', type=str, default='/cifs/data/tserre_lrs/projects/prj_predcoding/mnist_zca_matrix.npy', help='path to store the trained network')
 
 ### data
 parser.add_argument('--data_dir', type=str, default='../DataSet/MNIST/', help='dataset path')
@@ -113,6 +115,10 @@ def main(args):
         transforms.ToTensor()
     ])
 
+    # if args.zca_whiten:
+    #     zca_matrix = np.load(args.zca_matrix)
+    #     zca_matrix = torch.from_numpy(zca_matrix).float().cuda()
+
     dataset = datasets.MNIST(args.data_dir, train=False,
                               transform=transform)
 
@@ -145,6 +151,12 @@ def main(args):
                 if args.normalized_output == 1:
                     data_blurred = (data_blurred - 0.1307) / 0.3081
 
+                # if args.zca_whiten == 1:
+                #     shape = data_blurred.shape
+                #     data_blurred = data_blurred.reshape([shape[0],-1]) @ zca_matrix
+                #     data_blurred = data_blurred.reshape(shape) 
+
+
                 output = classif_model(data_blurred)
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
 
@@ -160,6 +172,7 @@ def main(args):
                     prediction_to_save = torch.cat(
                         [prediction_to_save, pred.view(data.size(0)).detach().cpu()], 0)
                     label_to_save = torch.cat([label_to_save, label.detach().cpu()], 0)
+            
             acc = 100.*(correct/len(dataset))
 
             print('Accuracy : {0}'.format(acc))

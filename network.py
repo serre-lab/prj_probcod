@@ -321,7 +321,7 @@ class iVAE(nn.Module):
 
 class SVI(nn.Module):
     def __init__(self, lr_svi, x_dim, z_dim, h_dim1=512, h_dim2=256, cuda=True,
-                 activation='tanh', svi_optimizer='Adam', beta=1, decoder_type='bernoulli', var_init=0, *args, **kwargs):
+                 activation='tanh', svi_optimizer='Adam', beta=1, decoder_type='bernoulli', var_init=1, *args, **kwargs):
         super(SVI, self).__init__()
 
         self.decoder_type = decoder_type
@@ -354,7 +354,6 @@ class SVI(nn.Module):
 
         self.var_init = var_init
         self.z_dim = z_dim
-
 
     def sampling(self, mu, log_var):
         std = torch.exp(0.5 * log_var)
@@ -403,12 +402,13 @@ class SVI(nn.Module):
             phi = phi.cuda()
         param_svi = list(phi.parameters())
         optimizer_SVI = self.optimizer(phi.parameters(), lr=self.lr_svi)
-        
-        mu_p, log_vae_p = torch.zeros([x.shape[0], self.z_dim]), torch.zeros([x.shape[0], self.z_dim])#+np.log(0.1)
+
+        mu_p, log_vae_p = torch.zeros([x.shape[0], self.z_dim]), (torch.zeros([x.shape[0], self.z_dim]) + np.log(self.var_init))
         if self.to_cuda:
             mu_p, log_vae_p = mu_p.cuda(), log_vae_p.cuda()
 
         phi.mu_p.data, phi.log_var_p.data = mu_p, log_vae_p
+
         if freq_extra != 0:
             reco_l, _, _, z_l, loss_gen_l, reco_loss_l, KL_loss_l, nb_it_l = [],[],[],[],[],[],[],[]
             mu_l = torch.zeros(x.size(0),(nb_it//freq_extra)+1,self.z_dim).cuda()
@@ -469,7 +469,7 @@ class SVI(nn.Module):
         else :
             loss_gen.backward()
         return reco, z, loss_gen, reco_loss, KL_loss
-    
+
 
 class IAI(nn.Module):
     def __init__(self, x_dim, z_dim, h_dim1=512, h_dim2=256,
@@ -657,6 +657,9 @@ class IAI(nn.Module):
         )
 
         return reco, z, loss_gen, reco_loss, KL_loss
+
+
+
 
 
 class PHI(nn.Module):

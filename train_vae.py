@@ -124,8 +124,8 @@ def main(args):
         transform = transforms.Compose([transforms.ToTensor(),
                                         transforms.Normalize((0.1307,), (0.3081,))])
 
-    dataset1 = datasets.MNIST(args.data_dir, train=True, download=True, transform=transform)
-    dataset2 = datasets.MNIST(args.data_dir, train=False, download=True, transform=transform)
+    dataset1 = datasets.MNIST(args.data_dir, train=True, download=False, transform=transform)
+    dataset2 = datasets.MNIST(args.data_dir, train=False, download=False, transform=transform)
 
     train_loader = torch.utils.data.DataLoader(dataset1, 
                                                 batch_size=args.batch_size,
@@ -151,7 +151,7 @@ def main(args):
     if args.type == 'SVI':
         vae_model = SVI(x_dim = 28**2, lr_svi=args.svi_lr,h_dim1=args.arch[0], h_dim2=args.arch[1],
                          z_dim=args.z_dim, activation= args.activation_function, cuda=args.cuda,
-                         svi_optimizer= args.svi_optimizer, beta=args.beta, decoder_type=args.decoder_type
+                         svi_optimizer= args.svi_optimizer, beta=args.beta, decoder_type=args.decoder_type, var_init=args.var_init,
                          )
 
     elif args.type == 'IAI':
@@ -362,7 +362,8 @@ def main(args):
         'batch_size': args.batch_size,
         'seed' : args.seed,
         'best_loss': float('%.3f'%(best_val_loss)),
-        'best_epoch': best_epoch
+        'best_epoch': best_epoch,
+        'var_init': args.var_init,
     }
 
     df_results = df_results.append(row, ignore_index=True)
