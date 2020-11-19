@@ -11,7 +11,7 @@ from torchvision import datasets, transforms
 
 from torchvision.utils import make_grid, save_image
 
-from network import VAE, iVAE, PCN, IAI, enable_grad, disable_grad, loss_function, loss_function_pc, Classifier
+from network import VAE, SVI, iVAE, PCN, IAI, enable_grad, disable_grad, loss_function, loss_function_pc, Classifier
 
 from tools import GaussianSmoothing, normalize_data
 
@@ -54,6 +54,10 @@ parser.add_argument('--denoising_baseline', type=int, default=0, help='Compute t
 parser.add_argument('--per_sample_monitoring', type=int, default=0, help='Output all the statistics per sample')
 parser.add_argument('--nb_class', type=int, default=10, help='number of class of the classifier')
 parser.add_argument('--save_data_reconstruction', type=int, default=0, help='save data reconstruction')
+
+# parser.add_argument('--zca_whiten', type=int, default=0, help='option to save the statistics per sample')
+# parser.add_argument('--zca_matrix', type=str, default='/cifs/data/tserre_lrs/projects/prj_predcoding/mnist_zca_matrix.npy', help='path to store the trained network')
+
 
 # data
 parser.add_argument('--data_dir', type=str, default='../DataSet/MNIST/', help='dataset path')
@@ -134,6 +138,21 @@ def main(args):
                          cuda=args.cuda, beta=args_vae['beta'], decoder_type=args_vae['decoder_type'])
         vae_model.load_state_dict(vae_loading['model'])
 
+    elif args_vae['type'] == 'SVI':
+        if (args.svi_lr_eval !=  args_vae['svi_lr']) and (args.svi_lr_eval !=0):
+            print('svi_lr training : {} -- svi_lr eval :{}'.format(args_vae['svi_lr'], args.svi_lr_eval))
+        if args.nb_it_eval != args_vae['nb_it'] and  (args.nb_it_eval !=0):
+            print('svi_nb_it training : {} -- svi_nb_it eval :{}'.format(args_vae['nb_it'] , args.nb_it_eval))
+        if args.svi_optimizer_eval != args_vae['svi_optimizer']:
+            print('svi_optimizer training : {} -- svi_optimizer eval :{}'.format(args_vae['svi_optimizer'], args.svi_optimizer_eval))
+        ############################## CHANGE VAR_INIT
+        vae_model = SVI(x_dim=28**2, lr_svi=args.svi_lr_eval, z_dim=args_vae['z_dim'],
+                         h_dim1=args_vae['arch'][0], h_dim2=args_vae['arch'][1],
+                         activation=args_vae['activation_function'], svi_optimizer=args.svi_optimizer_eval,
+                         cuda=args.cuda, beta=args_vae['beta'], decoder_type=args_vae['decoder_type'], var_init=0.001,
+                         )
+        vae_model.load_state_dict(vae_loading['model'])
+
     elif args_vae['type'] == 'IAI':
         vae_model = IAI(x_dim=28**2, z_dim=args_vae['z_dim'],
                          h_dim1=args_vae['arch'][0], h_dim2=args_vae['arch'][1],
@@ -192,13 +211,17 @@ def main(args):
         transform = transforms.Compose([
             transforms.ToTensor()])
 
-
+    # if args.zca_whiten:
+    #     zca_matrix = np.load(args.zca_matrix)
+    #     zca_matrix = torch.from_numpy(zca_matrix).float().cuda()
 
 
     dataset = datasets.MNIST(args.data_dir, train=False,
                               transform=transform)
     test_loader = torch.utils.data.DataLoader(dataset, **kwargs)
     
+
+    df_results = pd.DataFrame()
 
     ## evaluation loop
     for noise_type in dico_config.keys():
@@ -238,6 +261,7 @@ def main(args):
                 if args.normalized_output == 1:
                     data = (data - 0.1307)/0.3081
                     data_blurred = (data_blurred - 0.1307)/0.3081
+ 
 
                 if args.denoising_baseline == 1:
                     reco, z, mu_l_p, log_var_p, loss_gen, reco_loss, KL_loss, nb_it_l = vae_model.forward_eval(
@@ -248,20 +272,25 @@ def main(args):
                                                                                                            nb_it=args.nb_it_eval, freq_extra=args.freq_extra, reduction=reduction)
 
 
-
-
-                if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE','PCN', 'IAI']):
+                if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE', 'SVI', 'PCN', 'IAI']):
                     reco_size = reco.size()
                     reco = reco.view(-1,1, 28, 28)
                     label_it = label.unsqueeze(1).repeat(1,reco_size[1]).view(-1)
                 else :
                     reco = reco.view_as(data)
 
+                reco_out = reco
+                
+                # if args.zca_whiten == 1:
+                #     shape = reco.shape
+                #     reco = reco.reshape([shape[0],-1]) @ zca_matrix.T
+                #     reco = reco.reshape(shape)
+
                 output = classif_model(reco)
 
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
 
-                if (args.freq_extra !=0) and args_vae['type'] in ['IVAE','PCN', 'IAI']:
+                if (args.freq_extra !=0) and args_vae['type'] in ['IVAE', 'SVI', 'PCN', 'IAI']:
                     correct += pred.eq(label_it.view_as(pred)).view(reco_size[0],reco_size[1]).sum(dim=0).float()
                     correct_per_sample = pred.eq(label_it.view_as(pred)).view(reco_size[0], reco_size[1]) + 0
                 else :
@@ -300,7 +329,7 @@ def main(args):
                         torch.save(data_blurred_normalized.tolist(), os.path.join(args.path, 'image_blurred_{}_{}.pkl'.format(noise_type, param_noise)))
                     to_plot = torch.cat([data_normalize[0:50, :, :, :], data_blurred_normalized[0:50, :, :, :]], 0)
 
-                    if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE', 'PCN', 'IAI']):
+                    if (args.freq_extra != 0) and (args_vae['type'] in ['IVAE', 'SVI', 'PCN', 'IAI']):
                         reco = reco.view(reco_size[0], reco_size[1], reco.size(-3), reco.size(-2), reco.size(-1))
                         reco = reco.transpose(0, 1)
                         # print(reco.size())
@@ -332,7 +361,7 @@ def main(args):
             acc = 100.*(correct/len(dataset))
 
             #print('Accuracy : {0}'.format(acc))
-            if args_vae['type'] in ['IVAE','PCN', 'IAI']:
+            if args_vae['type'] in ['IVAE','PCN','SVI', 'IAI']:
                 accu = acc.cpu()
 
                 best_accu, indices = accu.max(0)
@@ -346,11 +375,13 @@ def main(args):
             filename = os.path.join(args.path, 'result_{}_{}.pth'.format(noise_type, param_noise))
             dico_result = {'accuracy': acc.tolist()}
 
-            if args_vae['type'] in ['IVAE','PCN']:
+            if args_vae['type'] in ['IVAE','PCN', 'SVI']:
                 dico_result = {'accuracy' : acc.tolist()}
             elif args_vae['type'] == 'VAE':
                 dico_result = {'accuracy': acc.tolist()}
+            
             print('accuracy', dico_result['accuracy'])
+            print('min', reco_out.min(), 'max', reco_out.max())
 
             if args.save_latent :
                 dico_result['latent_mu'] = mu_l_p_to_save.tolist()
@@ -364,10 +395,15 @@ def main(args):
                 dico_result['labels'] = label_to_save.tolist()
             torch.save(dico_result, filename)
 
-            if not os.path.isfile(args.path_db):
-                df_results = pd.DataFrame()
-            else:
-                df_results = pd.read_csv(args.path_db, index_col=0)
+            # if not os.path.isfile(args.path_db):
+            #     df_results = pd.DataFrame()
+            # else:
+            #     df_results = pd.read_csv(args.path_db, index_col=0)
+
+            # if not os.path.isfile(args.path_db):
+            #     df_results = pd.DataFrame()
+            # else:
+            #     df_results = pd.read_csv(args.path_db, index_col=0)
 
             rows = {
                 'eval_path':args.path,
@@ -399,9 +435,17 @@ def main(args):
             }
 
             df_results = df_results.append(rows, ignore_index=True)
+            
+            # if args.save_in_db == 1:
+            #     df_results.to_csv(args.path_db)
 
-            if args.save_in_db == 1:
-                df_results.to_csv(args.path_db)
+    # path_db = '../scratch/prj_probcod/db_all/' + args.path.split('/')[-1] + '_db.csv' 
+    # path_db = '../scratch/prj_probcod/db_zca/' + args.path.split('/')[-1] + '_db.csv' 
+    path_db = '../probcod_db_eval/' + args.path.split('/')[-1] + '_db.csv' 
+
+    if args.save_in_db == 1:
+        df_results.to_csv(path_db)
+
 
 if __name__ == '__main__':
     print(vars(args))

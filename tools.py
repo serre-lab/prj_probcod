@@ -132,3 +132,12 @@ class SaltPepper(nn.Module):
 
 
 
+class WhitenMNIST(object):
+    def __init__(self, matrix_path):
+        matrix = np.load(matrix_path)
+        self.matrix = torch.from_numpy(matrix).float()
+
+    def __call__(self, img):
+        shape = img.shape
+        img = img.flatten() @ self.matrix 
+        return img.reshape(shape) 
