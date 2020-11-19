@@ -227,7 +227,7 @@ def main(args):
             correct = 0
 
             if noise_type == 'Blurring':
-                smoothing = GaussianSmoothing(1, 10, param_noise, normalize_output=args.normalized_output).cuda()
+                smoothing = GaussianSmoothing(param_noise, channels=1, kernel_size=10, normalize_output=args.normalized_output).cuda()
                 noise_function['Blurring'] = smoothing.forward
 
             for batch_idx, (data, label) in enumerate(test_loader):

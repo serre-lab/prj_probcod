@@ -131,9 +131,6 @@ class VAE(nn.Module):
     def decoder(self, z):
 
         h  = self.dec(z)
-
-        #if self.decoder_type=='bernoulli':
-
         if self.decoder_type == 'bernoulli':
             to_return = torch.sigmoid(h)
         elif self.decoder_type == 'gaussian':
@@ -173,6 +170,20 @@ class iVAE(nn.Module):
         self.lr_svi=lr_svi
         self.optimizer = getattr(torch.optim, svi_optimizer)
 
+        #self.ff1 = nn.Linear(x_dim, h_dim1)
+        #self.ff2 = nn.Linear(h_dim1, h_dim2)
+
+        # decoder part
+        #self.fb4 = nn.Linear(z_dim, h_dim2)
+        #self.fb5 = nn.Linear(h_dim2, h_dim1)
+        #self.fb6 = nn.Linear(h_dim1, x_dim)
+
+        #self.enc = nn.Sequential(self.ff1, self.activ_func, self.ff2, self.activ_func)
+        #self.dec = nn.Sequential(self.fb4, self.activ_func, self.fb5, self.activ_func, self.fb6)
+
+        #self.ff3_mu = nn.Linear(h_dim2, z_dim)
+        #self.ff3_var = nn.Linear(h_dim2, z_dim)
+
         # encoder part
         self.ff1 = nn.Linear(x_dim, h_dim1)
         self.ff2 = nn.Linear(h_dim1, h_dim2)
@@ -189,7 +200,7 @@ class iVAE(nn.Module):
             self.activ_func = torch.nn.ReLU()
 
         self.enc = nn.Sequential(self.ff1, self.activ_func, self.ff2, self.activ_func)
-        self.dec = nn.Sequential(self.fb4, self.activ_func, self.fb5, self.activ_func)
+        self.dec = nn.Sequential(self.fb4, self.activ_func, self.fb5, self.activ_func,  self.fb6)
 
         # self.fb6_mu = nn.Linear(h_dim1, x_dim)
         # self.fb6_var = nn.Linear(h_dim1, x_dim)
@@ -216,15 +227,51 @@ class iVAE(nn.Module):
         return eps.mul(std).add(mu)
 
     def decoder(self, z):
-        #h = torch.tanh(self.fb4(z))
-        #h = torch.tanh(self.fb5(h))
         h = self.dec(z)
 
         if self.decoder_type == 'bernoulli':
-            to_return = torch.sigmoid(self.fb6(h))
+            to_return = torch.sigmoid(h)
         elif self.decoder_type == 'gaussian':
-            to_return = self.fb6(h)
+            to_return = h
         return to_return
+
+    def refine_input(self, image_init, mu_estimate, var_estimate, nb_it_ir, lr_ir=1e-2):
+        #x_new = nn.Parameter()
+        new_image = X_new()
+        if self.to_cuda:
+            #x_new= x_new.cuda()
+            new_image=new_image.cuda()
+        param_ir = list(new_image.parameters())
+        optimizer_ir = self.optimizer(new_image.parameters(), lr=lr_ir)
+        #optimizer_ir = self.optimizer([x_new], lr=lr_ir)
+        new_image.x_new.data = image_init
+        #x_new.data = image_init
+        enable_grad(param_ir)
+        #enable_grad([x_new])
+        for idx_it in range(nb_it_ir):
+            optimizer_ir.zero_grad()
+            _, loss_ir = self.step_ir(new_image.x_new, mu_estimate, var_estimate)
+            optimizer_ir.step()
+        #print(loss_ir.sum())
+        #print(new_image.x_new.sum())
+        #disable_grad([x_new])
+        disable_grad(param_ir)
+
+        return new_image.x_new
+
+    def step_ir(self, new_image, mu_estimate, var_estimate):
+        mu_from_image, log_var_from_image = self.encoder(torch.flatten(new_image, start_dim=1))
+        #z_from_image = self.sampling(mu_from_image, log_var_from_image)
+        loss_ir = F.mse_loss(mu_from_image, mu_estimate, reduction='none').sum(dim=-1)
+        loss_ir += F.mse_loss(log_var_from_image, var_estimate, reduction='none').sum(dim=-1)
+        loss_ir = loss_ir.mean()
+        #loss_ir = loss_ir
+        #print('loss_ir', loss_ir.size())
+        #print('loss_ir', loss_ir.mean().size())
+        #loss_ir.backward(torch.ones_like(loss_ir))
+        loss_ir.backward(torch.ones_like(loss_ir))
+        #print(new_image.grad.sum())
+        return new_image, loss_ir
 
     def forward(self, x, nb_it):
         phi = PHI()
@@ -512,6 +559,11 @@ class PHI(nn.Module):
 
         self.log_var = 0 
         self.mu = 0
+
+class X_new(nn.Module):
+    def __init__(self):
+        super(X_new, self).__init__()
+        self.x_new = nn.Parameter()
     
 
 
@@ -590,6 +642,7 @@ class PCN(nn.Module):
         elif self.decoder_type == 'gaussian':
             to_return = self.fb6(h)
         return to_return
+
 
     def forward(self, x, nb_it):
         phi = PHI()
@@ -757,3 +810,4 @@ def enable_grad(param_group):
 def disable_grad(param_group):
     for p in param_group:
         p.requires_grad = False
+

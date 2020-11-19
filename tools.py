@@ -23,7 +23,7 @@ class GaussianSmoothing(nn.Module):
         dim (int, optional): The number of dimensions of the data.
             Default value is 2 (spatial).
     """
-    def __init__(self, channels, kernel_size, sigma, dim=2, normalize_output=False):
+    def __init__(self, sigma, channels=1, kernel_size=10,  dim=2, normalize_output=False):
         super(GaussianSmoothing, self).__init__()
         #self.normalize = normalize_output
         if kernel_size % 2 == 0:
@@ -74,7 +74,7 @@ class GaussianSmoothing(nn.Module):
                 'Only 1, 2 and 3 dimensions are supported. Received {}.'.format(dim)
             )
 
-    def forward(self, input, useless_param):
+    def forward(self, input, useless_param=0):
         input = F.pad(input, self.pad_tuple, mode='constant')
         """
         Apply gaussian filter to input.
@@ -108,5 +108,27 @@ def normalize_data(data, start_dim=1):
 #    out, _ = data_fl.max(dim=1)
 #    out = out.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
 #    return data/out
+
+class WhiteNoise(nn.Module):
+    def __init__(self, param):
+        super(WhiteNoise, self).__init__()
+        self.param = param
+
+    def forward(self, x):
+        input_filtered = x + self.param * torch.randn_like(x)
+        return input_filtered
+
+class SaltPepper(nn.Module):
+    def __init__(self, param):
+        super(SaltPepper, self).__init__()
+        self.param = param
+
+    def forward(self, x):
+        to_out = x.clone()
+        mask = torch.bernoulli(torch.ones_like(x) * self.param).bool()
+        to_out[mask] = torch.bernoulli(torch.ones_like(x[mask]) * 0.5)
+        return to_out
+
+
 
 
